@@ -1,0 +1,908 @@
+/*
+ * Created by JFormDesigner on Tue Jul 31 10:12:49 EDT 2012
+ */
+
+package org.nyu.edu.dlts;
+
+import com.jgoodies.forms.factories.Borders;
+import com.jgoodies.forms.factories.FormFactory;
+import com.jgoodies.forms.layout.*;
+import org.nyu.edu.dlts.utils.ASpaceClient;
+import org.nyu.edu.dlts.utils.ASpaceCopyUtil;
+import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
+import org.nyu.edu.dlts.utils.ArchonClient;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.io.File;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+/**
+ * Simple class to test the database transfer code without starting of the AT client application
+ *
+ * @author Nathan Stevens
+ */
+public class dbCopyFrame extends JFrame {
+    // used for viewing the scripts in pre update 15 AT
+    private CodeViewerDialog cvd;
+
+    // stores any migration errors
+    private String migrationErrors = "";
+
+    // store any mismatch errors
+    private String repositoryMismatchErrors = "";
+
+    // the database copy util for AT to archives space
+    private ASpaceCopyUtil ascopy;
+
+    // the database copy until for check for repository mismatches
+    private ASpaceCopyUtil ascopyREC;
+
+    // used to connect connect to apace backend for testing
+    private ASpaceClient aspaceClient;
+
+    private ArchonClient archonClient;
+
+    private boolean copyStopped = false;
+
+    // used to find and attempt to resolve repository mismatch
+    private boolean checkRepositoryMismatch = false;
+    private HashMap<String, String> repositoryMismatchMap = null;
+
+    // used to specify that the GUI is in basic mode
+    private boolean isBasicUI = false;
+
+    // running in standalone mode
+    public dbCopyFrame(boolean basic) {
+        initComponents();
+
+        if(basic) {
+            hideAdvanceFeatures();
+        }
+    }
+
+    /**
+     * Method to hide advance UI features to make it easier for users to run the tool
+     */
+    private void hideAdvanceFeatures() {
+        //apiLabel.setVisible(false);
+        sourceLabel.setVisible(false);
+        sourceTextField.setVisible(false);
+        //threadLabel.setVisible(false);
+        //threadsTextField.setVisible(false);
+        //repositoryCheckButton.setVisible(false);
+        //copyRecordCheckBox.setVisible(false);
+        //viewRepositoryCheckReportButton.setVisible(false);
+        adminLabel.setVisible(false);
+        adminTextField.setVisible(false);
+        tracerPanel.setVisible(false);
+        //useSaveURIMapsCheckBox.setVisible(false);
+        simulateCheckBox.setVisible(false);
+        deleteResourcesCheckBox.setVisible(false);
+        numResourceToCopyLabel.setVisible(false);
+        numResourceToCopyTextField.setVisible(false);
+        deleteResourcesCheckBox.setVisible(false);
+        resourcesToCopyLabel.setVisible(false);
+        resourcesToCopyTextField.setVisible(false);
+        recordURIComboBox.setVisible(false);
+        paramsLabel.setVisible(false);
+        paramsTextField.setVisible(false);
+        viewRecordButton.setVisible(false);
+        testRecordButton.setVisible(false);
+        basicUIButton.setVisible(false);
+
+        isBasicUI = true;
+    }
+
+    /**
+     * Close this window, and only exit if we are running in stand alone mode
+     */
+    private void okButtonActionPerformed() {
+        setVisible(false);
+
+        if (!isBasicUI) {
+            System.exit(0);
+        }
+    }
+
+    /**
+     * Method to copy data from AT to archive space. NO longer Used
+     */
+    private void CopyToASpaceButtonActionPerformed() {
+        // reset the error count and error messages
+        errorCountLabel.setText("N/A");
+        migrationErrors = "";
+
+        // get the connection url for the
+        String sourceUrl = getArchonSourceUrl();
+
+        // load the source and destinations database connections
+        archonClient = new ArchonClient(sourceUrl, archonAdminTextField.getText(), archonPasswordTextField.getText());
+        String sourceSession = archonClient.getSession();
+
+        if (sourceSession != null) {
+            startASpaceCopyProcess(archonClient);
+        } else {
+            archonClient = null;
+            consoleTextArea.setText("Source connection couldn't be established ...");
+        }
+    }
+
+    /**
+     * Method to start the a thread that actually copied ASpace records
+     *
+     * @param archonClient
+     */
+    private void startASpaceCopyProcess(final ArchonClient archonClient) {
+        Thread performer = new Thread(new Runnable() {
+            public void run() {
+                // first disable/enable the relevant buttons
+                copyToASpaceButton.setEnabled(false);
+                //errorLogButton.setEnabled(false);
+                stopButton.setEnabled(true);
+
+                // clear text area and show progress bar
+                consoleTextArea.setText("");
+                copyProgressBar.setStringPainted(true);
+                copyProgressBar.setString("Copying Records ...");
+                copyProgressBar.setIndeterminate(true);
+
+                try {
+                    // print the connection message
+                    consoleTextArea.append(archonClient.getConnectionMessage());
+
+                    String host = hostTextField.getText().trim();
+                    String admin = adminTextField.getText();
+                    String adminPassword = adminPasswordTextField.getText();
+                    boolean simulateRESTCalls = simulateCheckBox.isSelected();
+
+                    ascopy = new ASpaceCopyUtil(archonClient, host, admin, adminPassword);
+                    ascopy.setSimulateRESTCalls(simulateRESTCalls);
+
+                    // set the reset password, and output console and progress bar
+                    ascopy.setResetPassword(resetPasswordTextField.getText().trim());
+                    ascopy.setOutputConsole(consoleTextArea);
+                    ascopy.setProgressIndicators(copyProgressBar, errorCountLabel);
+                    ascopy.setCopying(true);
+
+                    // try getting the session and only continue if a valid session is return;
+                    if(!ascopy.getSession()) {
+                        consoleTextArea.append("No session, nothing to do ...\n");
+                        reEnableCopyButtons();
+                        return;
+                    } else {
+                        consoleTextArea.append("Administrator authenticated ...\n");
+                    }
+
+                    // set the progress bar from doing it's thing since the ascopy class is going to take over
+                    copyProgressBar.setIndeterminate(false);
+
+                    if(useSaveURIMapsCheckBox.isSelected() && ascopy.uriMapFileExist()) {
+                        ascopy.loadURIMaps();
+                    } else {
+                        if(!copyStopped) ascopy.copyEnumRecords();
+                        if(!copyStopped) ascopy.copyRepositoryRecords();
+                        if(!copyStopped) ascopy.mapRepositoryGroups();
+                        //if(!copyStopped) ascopy.copyLocationRecords();
+                        //if(!copyStopped) ascopy.copyUserRecords();
+                        if(!copyStopped) ascopy.copySubjectRecords();
+                        if(!copyStopped) ascopy.copyCreatorRecords();
+                        //if(!copyStopped) ascopy.copyAccessionRecords();
+                        //if(!copyStopped) ascopy.copyDigitalObjectRecords();*/
+
+                        // save the record maps for possible future use
+                        ascopy.saveURIMaps();
+                    }
+
+                    /*
+                    // get the number of resources to copy here to allow it to be reset while the migration
+                    // has been started, but migration of resources has not yet started
+                    int resourcesToCopy = 1000000;
+                    int threads = 1;
+
+                    ArrayList<String> resourcesIDsList = new ArrayList<String>();
+
+                    try {
+                        boolean deleteSavedResources = deleteResourcesCheckBox.isSelected();
+                        ascopy.setDeleteSavedResources(deleteSavedResources);
+
+                        // get the number of threads to run the copy process in
+                        threads = Integer.parseInt(threadsTextField.getText());
+
+                        // get the number of resource to copy
+                        resourcesToCopy = Integer.parseInt(numResourceToCopyTextField.getText());
+
+                        // get the resource ids of resources to copy
+                        String ids = resourcesToCopyTextField.getText().trim();
+                        if(!ids.isEmpty()) {
+                            String[] sa = ids.split("\\s*,\\s*");
+                            for(String id: sa) {
+                                resourcesIDsList.add(id);
+                            }
+
+                            resourcesToCopy = resourcesIDsList.size();
+                        }
+
+                        // get the min/max resources to copy
+                        int batchMin = Integer.parseInt(batchMinTextField.getText());
+                        int batchMax = Integer.parseInt(batchMaxTextField.getText());
+                        ascopy.setBatchSizeLimits(batchMin, batchMax);
+                    } catch (NumberFormatException nfe) { }
+
+                    // check to make sure we didn't stop the copy process or resource to copy is
+                    // not set to zero. Setting resources to copy to zero is a convenient way
+                    // to generate a URI map which contains no resource records for testing purposes
+                    if(!copyStopped && resourcesToCopy != 0) {
+                        ascopy.setResourcesToCopyList(resourcesIDsList);
+                        ascopy.copyResourceRecords(resourcesToCopy, threads);
+                    }*/
+
+                    ascopy.cleanUp();
+
+                    // set the number of errors and message now
+                    String errorCount = "" + ascopy.getSaveErrorCount();
+                    errorCountLabel.setText(errorCount);
+                    migrationErrors = ascopy.getSaveErrorMessages() + "\n\nTotal errors: " + errorCount;
+                } catch (Exception e) {
+                    consoleTextArea.setText("Unrecoverable exception, migration stopped ...\n\n");
+                    consoleTextArea.append(ascopy.getCurrentRecordInfo() + "\n\n");
+                    consoleTextArea.append(getStackTrace(e));
+                    //e.printStackTrace();
+                }
+
+                reEnableCopyButtons();
+            }
+        });
+
+        performer.start();
+    }
+
+    /**
+     * Method to return the archon host url
+     *
+     * @return
+     */
+    private String getArchonSourceUrl() {
+        String sourceUrl = sourceTextField.getText();
+
+        // we may be testing the developer system so check
+        if(useTracerCheckBox.isSelected()) {
+            String devHost = "http://archives-dev.library.illinois.edu/archondev/";
+            String archonInstance = (String)tracerComboBox.getSelectedItem();
+            sourceUrl = devHost + archonInstance + "/";
+        }
+
+        return sourceUrl;
+    }
+
+    /**
+     * Method to re-enable the copy buttons
+     */
+    private void reEnableCopyButtons() {
+        // re-enable the buttons the relevant buttons
+        copyToASpaceButton.setEnabled(true);
+        copyProgressBar.setValue(0);
+
+        if (copyStopped) {
+            copyStopped = false;
+            copyProgressBar.setString("Cancelled Copy Process ...");
+        } else {
+            copyProgressBar.setString("Done");
+        }
+    }
+
+    /**
+     * Method to display the error log dialog
+     */
+    private void errorLogButtonActionPerformed() {
+        ImportExportLogDialog logDialog;
+
+        if(ascopy != null && ascopy.isCopying()) {
+            logDialog = new ImportExportLogDialog(this, ascopy.getCurrentProgressMessage());
+            logDialog.setTitle("Current Data Transfer Errors");
+        } else {
+            logDialog = new ImportExportLogDialog(this, migrationErrors);
+            logDialog.setTitle("Data Transfer Errors");
+        }
+
+        logDialog.showDialog();
+    }
+
+    /**
+     * Method to stop the copy process. Only works when resource are being copied
+     */
+    private void stopButtonActionPerformed() {
+        if(ascopy != null) {
+            ascopy.stopCopy();
+        }
+
+        if(ascopyREC != null) {
+            ascopyREC.stopCopy();
+        }
+
+        copyStopped = true;
+        stopButton.setEnabled(false);
+    }
+
+    /**
+     * A convenient method for view the ASpace json records. It meant to be used for development purposes only
+     */
+    private void viewRecordButtonActionPerformed() {
+        String uri = recordURIComboBox.getSelectedItem().toString();
+        String recordJSON = "";
+
+        try {
+            if(aspaceClient == null) {
+                String host = hostTextField.getText().trim();
+                String admin = adminTextField.getText();
+                String adminPassword = adminPasswordTextField.getText();
+
+                aspaceClient = new ASpaceClient(host, admin, adminPassword);
+                aspaceClient.getSession();
+            }
+
+            recordJSON = aspaceClient.getRecordAsJSON(uri, paramsTextField.getText());
+
+            if(recordJSON == null || recordJSON.isEmpty()) {
+                recordJSON = aspaceClient.getErrorMessages();
+            }
+        } catch (Exception e) {
+            recordJSON = e.toString();
+        }
+
+
+        CodeViewerDialog codeViewerDialog = new CodeViewerDialog(this, SyntaxConstants.SYNTAX_STYLE_JAVASCRIPT, recordJSON, true, true);
+        codeViewerDialog.setTitle("REST ENDPOINT URI: " + uri);
+        codeViewerDialog.setASpaceClient(aspaceClient);
+        codeViewerDialog.pack();
+        codeViewerDialog.setVisible(true);
+    }
+
+    /**
+     * This will allow multiple records to submit for testing.
+     */
+    private void testRecordButtonActionPerformed() {
+        try {
+            if(aspaceClient == null) {
+                String host = hostTextField.getText().trim();
+                String admin = adminTextField.getText();
+                String adminPassword = adminPasswordTextField.getText();
+
+                aspaceClient = new ASpaceClient(host, admin, adminPassword);
+                aspaceClient.getSession();
+            }
+
+            CodeViewerDialog codeViewerDialog = new CodeViewerDialog(this, SyntaxConstants.SYNTAX_STYLE_JAVASCRIPT, "", true, true);
+            codeViewerDialog.setTitle("Record Unit Test");
+            codeViewerDialog.setASpaceClient(aspaceClient);
+            codeViewerDialog.setUpMultipleRecordTest();
+            codeViewerDialog.pack();
+            codeViewerDialog.setVisible(true);
+        } catch (Exception e) {
+            consoleTextArea.setText(getStackTrace(e));
+        }
+    }
+
+    /**
+     * Method to display the basic UI.
+     */
+    private void basicUIButtonActionPerformed() {
+        dbCopyFrame basicFrame = new dbCopyFrame(true);
+        basicFrame.pack();
+        basicFrame.setVisible(true);
+    }
+
+    /**
+     * Method to get the string from a stack trace
+     * @param throwable The exception
+     * @return the string representation of the stack trace
+     */
+    private String getStackTrace(Throwable throwable) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        throwable.printStackTrace(pw);
+        return sw.toString();
+    }
+
+    /**
+     * Method to set the directory where the downloaded files should be placed
+     */
+    private void downloadFolderButtonActionPerformed() {
+        JFileChooser fc = new JFileChooser();
+        fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+
+        int returnVal = fc.showOpenDialog(dbCopyFrame.this);
+
+        if (returnVal == JFileChooser.APPROVE_OPTION) {
+            File file = fc.getSelectedFile();
+            //This is where a real application would open the file.
+            downloadFolderTextField.setText(file.getAbsolutePath());
+        }
+    }
+
+    private void initComponents() {
+        // JFormDesigner - Component initialization - DO NOT MODIFY  //GEN-BEGIN:initComponents
+        // Generated using JFormDesigner non-commercial license
+        dialogPane = new JPanel();
+        contentPanel = new JPanel();
+        apiLabel = new JLabel();
+        sourceLabel = new JLabel();
+        sourceTextField = new JTextField();
+        archonAdminLabel = new JLabel();
+        archonAdminTextField = new JTextField();
+        archonPasswordLabel = new JLabel();
+        archonPasswordTextField = new JTextField();
+        downloadCheckBox = new JCheckBox();
+        doURLTextField = new JTextField();
+        downloadFolderButton = new JButton();
+        downloadFolderTextField = new JTextField();
+        copyToASpaceButton = new JButton();
+        hostLabel = new JLabel();
+        hostTextField = new JTextField();
+        tracerPanel = new JPanel();
+        useTracerCheckBox = new JCheckBox();
+        tracerComboBox = new JComboBox();
+        adminLabel = new JLabel();
+        adminTextField = new JTextField();
+        adminPasswordLabel = new JLabel();
+        adminPasswordTextField = new JTextField();
+        useSaveURIMapsCheckBox = new JCheckBox();
+        resetPassswordLabel = new JLabel();
+        resetPasswordTextField = new JTextField();
+        threadLabel = new JLabel();
+        threadsTextField = new JTextField();
+        simulateCheckBox = new JCheckBox();
+        numResourceToCopyLabel = new JLabel();
+        numResourceToCopyTextField = new JTextField();
+        deleteResourcesCheckBox = new JCheckBox();
+        resourcesToCopyLabel = new JLabel();
+        resourcesToCopyTextField = new JTextField();
+        label1 = new JLabel();
+        batchMinTextField = new JTextField();
+        batchMaxTextField = new JTextField();
+        outputConsoleLabel = new JLabel();
+        copyProgressBar = new JProgressBar();
+        scrollPane1 = new JScrollPane();
+        consoleTextArea = new JTextArea();
+        recordURIComboBox = new JComboBox();
+        panel1 = new JPanel();
+        paramsLabel = new JLabel();
+        paramsTextField = new JTextField();
+        viewRecordButton = new JButton();
+        testRecordButton = new JButton();
+        buttonBar = new JPanel();
+        errorLogButton = new JButton();
+        saveErrorsLabel = new JLabel();
+        errorCountLabel = new JLabel();
+        stopButton = new JButton();
+        basicUIButton = new JButton();
+        okButton = new JButton();
+        CellConstraints cc = new CellConstraints();
+
+        //======== this ========
+        setTitle("Archon Test Data Migrator (v05-15-2014A)");
+        Container contentPane = getContentPane();
+        contentPane.setLayout(new BorderLayout());
+
+        //======== dialogPane ========
+        {
+            dialogPane.setBorder(Borders.DIALOG_BORDER);
+            dialogPane.setLayout(new BorderLayout());
+
+            //======== contentPanel ========
+            {
+                contentPanel.setLayout(new FormLayout(
+                    new ColumnSpec[] {
+                        FormFactory.DEFAULT_COLSPEC,
+                        FormFactory.LABEL_COMPONENT_GAP_COLSPEC,
+                        new ColumnSpec(ColumnSpec.FILL, Sizes.DEFAULT, FormSpec.DEFAULT_GROW),
+                        FormFactory.LABEL_COMPONENT_GAP_COLSPEC,
+                        new ColumnSpec(ColumnSpec.FILL, Sizes.DEFAULT, FormSpec.DEFAULT_GROW),
+                        FormFactory.LABEL_COMPONENT_GAP_COLSPEC,
+                        FormFactory.DEFAULT_COLSPEC,
+                        FormFactory.LABEL_COMPONENT_GAP_COLSPEC,
+                        FormFactory.DEFAULT_COLSPEC,
+                        FormFactory.LABEL_COMPONENT_GAP_COLSPEC,
+                        FormFactory.DEFAULT_COLSPEC
+                    },
+                    new RowSpec[] {
+                        FormFactory.DEFAULT_ROWSPEC,
+                        FormFactory.LINE_GAP_ROWSPEC,
+                        FormFactory.DEFAULT_ROWSPEC,
+                        FormFactory.LINE_GAP_ROWSPEC,
+                        FormFactory.DEFAULT_ROWSPEC,
+                        FormFactory.LINE_GAP_ROWSPEC,
+                        FormFactory.DEFAULT_ROWSPEC,
+                        FormFactory.LINE_GAP_ROWSPEC,
+                        FormFactory.DEFAULT_ROWSPEC,
+                        FormFactory.LINE_GAP_ROWSPEC,
+                        FormFactory.DEFAULT_ROWSPEC,
+                        FormFactory.LINE_GAP_ROWSPEC,
+                        FormFactory.DEFAULT_ROWSPEC,
+                        FormFactory.LINE_GAP_ROWSPEC,
+                        FormFactory.DEFAULT_ROWSPEC,
+                        FormFactory.LINE_GAP_ROWSPEC,
+                        FormFactory.DEFAULT_ROWSPEC,
+                        FormFactory.LINE_GAP_ROWSPEC,
+                        FormFactory.DEFAULT_ROWSPEC,
+                        FormFactory.LINE_GAP_ROWSPEC,
+                        FormFactory.DEFAULT_ROWSPEC,
+                        FormFactory.LINE_GAP_ROWSPEC,
+                        FormFactory.DEFAULT_ROWSPEC,
+                        FormFactory.LINE_GAP_ROWSPEC,
+                        FormFactory.DEFAULT_ROWSPEC
+                    }));
+
+                //---- apiLabel ----
+                apiLabel.setText("  Archives Space Version: v1.0.0");
+                apiLabel.setHorizontalTextPosition(SwingConstants.CENTER);
+                contentPanel.add(apiLabel, cc.xy(1, 1));
+
+                //---- sourceLabel ----
+                sourceLabel.setText("Archon Source");
+                contentPanel.add(sourceLabel, cc.xywh(3, 1, 2, 1));
+
+                //---- sourceTextField ----
+                sourceTextField.setColumns(4);
+                sourceTextField.setText("http://localhost/~nathan/archon");
+                contentPanel.add(sourceTextField, cc.xywh(5, 1, 7, 1));
+
+                //---- archonAdminLabel ----
+                archonAdminLabel.setText("Archon User");
+                contentPanel.add(archonAdminLabel, cc.xywh(3, 3, 2, 1));
+
+                //---- archonAdminTextField ----
+                archonAdminTextField.setText("sa");
+                contentPanel.add(archonAdminTextField, cc.xywh(5, 3, 3, 1));
+
+                //---- archonPasswordLabel ----
+                archonPasswordLabel.setText("Password");
+                contentPanel.add(archonPasswordLabel, cc.xy(9, 3));
+
+                //---- archonPasswordTextField ----
+                archonPasswordTextField.setText("admin");
+                contentPanel.add(archonPasswordTextField, cc.xy(11, 3));
+
+                //---- downloadCheckBox ----
+                downloadCheckBox.setText("Download Digital Object Files");
+                contentPanel.add(downloadCheckBox, cc.xy(1, 5));
+
+                //---- doURLTextField ----
+                doURLTextField.setText("http://digital_object.base.url");
+                contentPanel.add(doURLTextField, cc.xywh(3, 5, 9, 1));
+
+                //---- downloadFolderButton ----
+                downloadFolderButton.setText("Set Download Folder");
+                downloadFolderButton.addActionListener(new ActionListener() {
+                    public void actionPerformed(ActionEvent e) {
+                        downloadFolderButtonActionPerformed();
+                    }
+                });
+                contentPanel.add(downloadFolderButton, cc.xy(1, 7));
+                contentPanel.add(downloadFolderTextField, cc.xywh(3, 7, 9, 1));
+
+                //---- copyToASpaceButton ----
+                copyToASpaceButton.setText("Copy To Archives Space");
+                copyToASpaceButton.addActionListener(new ActionListener() {
+                    public void actionPerformed(ActionEvent e) {
+                        CopyToASpaceButtonActionPerformed();
+                    }
+                });
+                contentPanel.add(copyToASpaceButton, cc.xy(1, 9));
+
+                //---- hostLabel ----
+                hostLabel.setText("Host");
+                contentPanel.add(hostLabel, cc.xywh(3, 9, 2, 1));
+
+                //---- hostTextField ----
+                hostTextField.setText("http://54.81.48.185:8087");
+                contentPanel.add(hostTextField, cc.xywh(5, 9, 7, 1));
+
+                //======== tracerPanel ========
+                {
+                    tracerPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
+
+                    //---- useTracerCheckBox ----
+                    useTracerCheckBox.setText("Use Test Archon");
+                    useTracerCheckBox.setSelected(true);
+                    tracerPanel.add(useTracerCheckBox);
+
+                    //---- tracerComboBox ----
+                    tracerComboBox.setModel(new DefaultComboBoxModel(new String[] {
+                        "tracer",
+                        "luther",
+                        "miami",
+                        "nwu",
+                        "uiuc",
+                        "ihlc",
+                        "ala",
+                        "rbml"
+                    }));
+                    tracerPanel.add(tracerComboBox);
+                }
+                contentPanel.add(tracerPanel, cc.xy(1, 11));
+
+                //---- adminLabel ----
+                adminLabel.setText("ASpace admin");
+                contentPanel.add(adminLabel, cc.xy(3, 11));
+
+                //---- adminTextField ----
+                adminTextField.setText("admin");
+                contentPanel.add(adminTextField, cc.xywh(5, 11, 3, 1));
+
+                //---- adminPasswordLabel ----
+                adminPasswordLabel.setText("Password");
+                contentPanel.add(adminPasswordLabel, cc.xy(9, 11));
+
+                //---- adminPasswordTextField ----
+                adminPasswordTextField.setText("admin");
+                contentPanel.add(adminPasswordTextField, cc.xy(11, 11));
+
+                //---- useSaveURIMapsCheckBox ----
+                useSaveURIMapsCheckBox.setText("Continue From Resource Records");
+                contentPanel.add(useSaveURIMapsCheckBox, cc.xy(1, 13));
+
+                //---- resetPassswordLabel ----
+                resetPassswordLabel.setText("Reset Password");
+                contentPanel.add(resetPassswordLabel, cc.xy(3, 13));
+
+                //---- resetPasswordTextField ----
+                resetPasswordTextField.setText("archive");
+                contentPanel.add(resetPasswordTextField, cc.xywh(5, 13, 3, 1));
+
+                //---- threadLabel ----
+                threadLabel.setText("Threads");
+                contentPanel.add(threadLabel, cc.xy(9, 13));
+
+                //---- threadsTextField ----
+                threadsTextField.setColumns(4);
+                threadsTextField.setText("8");
+                contentPanel.add(threadsTextField, cc.xy(11, 13));
+
+                //---- simulateCheckBox ----
+                simulateCheckBox.setText("Simulate REST Calls");
+                contentPanel.add(simulateCheckBox, cc.xy(1, 15));
+
+                //---- numResourceToCopyLabel ----
+                numResourceToCopyLabel.setText("Number of  Resources To Copy");
+                contentPanel.add(numResourceToCopyLabel, cc.xywh(3, 15, 3, 1));
+
+                //---- numResourceToCopyTextField ----
+                numResourceToCopyTextField.setText("100000");
+                contentPanel.add(numResourceToCopyTextField, cc.xywh(7, 15, 5, 1));
+
+                //---- deleteResourcesCheckBox ----
+                deleteResourcesCheckBox.setText("Delete Previously Saved Resources");
+                contentPanel.add(deleteResourcesCheckBox, cc.xy(1, 17));
+
+                //---- resourcesToCopyLabel ----
+                resourcesToCopyLabel.setText("Resources To Copy ");
+                contentPanel.add(resourcesToCopyLabel, cc.xywh(3, 17, 3, 1));
+                contentPanel.add(resourcesToCopyTextField, cc.xywh(5, 17, 7, 1));
+
+                //---- label1 ----
+                label1.setText("Batch Size Filter (Min/Max)");
+                contentPanel.add(label1, cc.xy(3, 19));
+
+                //---- batchMinTextField ----
+                batchMinTextField.setText("2");
+                contentPanel.add(batchMinTextField, cc.xy(5, 19));
+
+                //---- batchMaxTextField ----
+                batchMaxTextField.setText("40000");
+                contentPanel.add(batchMaxTextField, cc.xy(11, 19));
+
+                //---- outputConsoleLabel ----
+                outputConsoleLabel.setText("Output Console:");
+                contentPanel.add(outputConsoleLabel, cc.xy(1, 21));
+                contentPanel.add(copyProgressBar, cc.xywh(3, 21, 9, 1));
+
+                //======== scrollPane1 ========
+                {
+
+                    //---- consoleTextArea ----
+                    consoleTextArea.setRows(12);
+                    scrollPane1.setViewportView(consoleTextArea);
+                }
+                contentPanel.add(scrollPane1, cc.xywh(1, 23, 11, 1));
+
+                //---- recordURIComboBox ----
+                recordURIComboBox.setModel(new DefaultComboBoxModel(new String[] {
+                    "/repositories",
+                    "/users",
+                    "/subjects",
+                    "/agents/families/1",
+                    "/agents/people/1",
+                    "/agents/corporate_entities/1",
+                    "/repositories/2/accessions/1",
+                    "/repositories/2/resources/1",
+                    "/repositories/2/archival_objects/1",
+                    "/config/enumerations"
+                }));
+                recordURIComboBox.setEditable(true);
+                contentPanel.add(recordURIComboBox, cc.xy(1, 25));
+
+                //======== panel1 ========
+                {
+                    panel1.setLayout(new FlowLayout(FlowLayout.LEFT));
+
+                    //---- paramsLabel ----
+                    paramsLabel.setText("Params");
+                    panel1.add(paramsLabel);
+
+                    //---- paramsTextField ----
+                    paramsTextField.setColumns(20);
+                    panel1.add(paramsTextField);
+                }
+                contentPanel.add(panel1, cc.xywh(3, 25, 5, 1));
+
+                //---- viewRecordButton ----
+                viewRecordButton.setText("View");
+                viewRecordButton.addActionListener(new ActionListener() {
+                    public void actionPerformed(ActionEvent e) {
+                        viewRecordButtonActionPerformed();
+                    }
+                });
+                contentPanel.add(viewRecordButton, cc.xywh(9, 25, 2, 1));
+
+                //---- testRecordButton ----
+                testRecordButton.setText("  Test  ");
+                testRecordButton.addActionListener(new ActionListener() {
+                    public void actionPerformed(ActionEvent e) {
+                        testRecordButtonActionPerformed();
+                    }
+                });
+                contentPanel.add(testRecordButton, cc.xy(11, 25));
+            }
+            dialogPane.add(contentPanel, BorderLayout.CENTER);
+
+            //======== buttonBar ========
+            {
+                buttonBar.setBorder(Borders.BUTTON_BAR_GAP_BORDER);
+                buttonBar.setLayout(new FormLayout(
+                    new ColumnSpec[] {
+                        FormFactory.LABEL_COMPONENT_GAP_COLSPEC,
+                        FormFactory.DEFAULT_COLSPEC,
+                        FormFactory.LABEL_COMPONENT_GAP_COLSPEC,
+                        FormFactory.DEFAULT_COLSPEC,
+                        FormFactory.LABEL_COMPONENT_GAP_COLSPEC,
+                        FormFactory.DEFAULT_COLSPEC,
+                        FormFactory.GLUE_COLSPEC,
+                        FormFactory.LABEL_COMPONENT_GAP_COLSPEC,
+                        FormFactory.DEFAULT_COLSPEC,
+                        FormFactory.DEFAULT_COLSPEC,
+                        FormFactory.DEFAULT_COLSPEC,
+                        FormFactory.BUTTON_COLSPEC
+                    },
+                    RowSpec.decodeSpecs("pref")));
+
+                //---- errorLogButton ----
+                errorLogButton.setText("View Error Log");
+                errorLogButton.addActionListener(new ActionListener() {
+                    public void actionPerformed(ActionEvent e) {
+                        errorLogButtonActionPerformed();
+                    }
+                });
+                buttonBar.add(errorLogButton, cc.xy(2, 1));
+
+                //---- saveErrorsLabel ----
+                saveErrorsLabel.setText(" Errors: ");
+                buttonBar.add(saveErrorsLabel, cc.xy(4, 1));
+
+                //---- errorCountLabel ----
+                errorCountLabel.setText("N/A ");
+                errorCountLabel.setForeground(Color.red);
+                errorCountLabel.setFont(new Font("Lucida Grande", Font.BOLD, 13));
+                buttonBar.add(errorCountLabel, cc.xy(6, 1));
+
+                //---- stopButton ----
+                stopButton.setText("Cancel Copy");
+                stopButton.setEnabled(false);
+                stopButton.addActionListener(new ActionListener() {
+                    public void actionPerformed(ActionEvent e) {
+                        stopButtonActionPerformed();
+                        stopButtonActionPerformed();
+                    }
+                });
+                buttonBar.add(stopButton, cc.xy(9, 1));
+
+                //---- basicUIButton ----
+                basicUIButton.setText("Basic UI");
+                basicUIButton.addActionListener(new ActionListener() {
+                    public void actionPerformed(ActionEvent e) {
+                        basicUIButtonActionPerformed();
+                    }
+                });
+                buttonBar.add(basicUIButton, cc.xy(10, 1));
+
+                //---- okButton ----
+                okButton.setText("Close");
+                okButton.addActionListener(new ActionListener() {
+                    public void actionPerformed(ActionEvent e) {
+                        okButtonActionPerformed();
+                    }
+                });
+                buttonBar.add(okButton, cc.xy(12, 1));
+            }
+            dialogPane.add(buttonBar, BorderLayout.SOUTH);
+        }
+        contentPane.add(dialogPane, BorderLayout.CENTER);
+        pack();
+        setLocationRelativeTo(getOwner());
+        // JFormDesigner - End of component initialization  //GEN-END:initComponents
+    }
+
+
+    // JFormDesigner - Variables declaration - DO NOT MODIFY  //GEN-BEGIN:variables
+    // Generated using JFormDesigner non-commercial license
+    private JPanel dialogPane;
+    private JPanel contentPanel;
+    private JLabel apiLabel;
+    private JLabel sourceLabel;
+    private JTextField sourceTextField;
+    private JLabel archonAdminLabel;
+    private JTextField archonAdminTextField;
+    private JLabel archonPasswordLabel;
+    private JTextField archonPasswordTextField;
+    private JCheckBox downloadCheckBox;
+    private JTextField doURLTextField;
+    private JButton downloadFolderButton;
+    private JTextField downloadFolderTextField;
+    private JButton copyToASpaceButton;
+    private JLabel hostLabel;
+    private JTextField hostTextField;
+    private JPanel tracerPanel;
+    private JCheckBox useTracerCheckBox;
+    private JComboBox tracerComboBox;
+    private JLabel adminLabel;
+    private JTextField adminTextField;
+    private JLabel adminPasswordLabel;
+    private JTextField adminPasswordTextField;
+    private JCheckBox useSaveURIMapsCheckBox;
+    private JLabel resetPassswordLabel;
+    private JTextField resetPasswordTextField;
+    private JLabel threadLabel;
+    private JTextField threadsTextField;
+    private JCheckBox simulateCheckBox;
+    private JLabel numResourceToCopyLabel;
+    private JTextField numResourceToCopyTextField;
+    private JCheckBox deleteResourcesCheckBox;
+    private JLabel resourcesToCopyLabel;
+    private JTextField resourcesToCopyTextField;
+    private JLabel label1;
+    private JTextField batchMinTextField;
+    private JTextField batchMaxTextField;
+    private JLabel outputConsoleLabel;
+    private JProgressBar copyProgressBar;
+    private JScrollPane scrollPane1;
+    private JTextArea consoleTextArea;
+    private JComboBox recordURIComboBox;
+    private JPanel panel1;
+    private JLabel paramsLabel;
+    private JTextField paramsTextField;
+    private JButton viewRecordButton;
+    private JButton testRecordButton;
+    private JPanel buttonBar;
+    private JButton errorLogButton;
+    private JLabel saveErrorsLabel;
+    private JLabel errorCountLabel;
+    private JButton stopButton;
+    private JButton basicUIButton;
+    private JButton okButton;
+    // JFormDesigner - End of variables declaration  //GEN-END:variables
+
+    /**
+     * Main method for testing in stand alone mode
+     */
+    public static void main(String[] args) {
+        dbCopyFrame frame = new dbCopyFrame(false);
+        frame.pack();
+        frame.setVisible(true);
+    }
+
+}
