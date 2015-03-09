@@ -73,8 +73,11 @@ public class ArchonClient {
     // let keep all the errors we encounter so we can have a log
     private StringBuilder errorBuffer = new StringBuilder();
 
-    // boolean to use when one once debug stuff
-    private boolean debug = false;
+    // boolean to use to execute debug code
+    private boolean debug = true;
+
+    // hashmap used to store the raw Archon response in any in pieces key by their their endpoint
+    private HashMap<String, String> archonRecordsMap = new HashMap<String, String>();
 
     /**
      * The main constructor
@@ -525,6 +528,11 @@ public class ArchonClient {
             if (jsonText.startsWith("{")) {
                 JSONObject jso = new JSONObject(jsonText);
                 appendToJSONObject(parentRecordJS, jso);
+
+                if(debug) {
+                    archonRecordsMap.put(completeEndpoint, jso.toString(2));
+                }
+
                 batchStart += 100;
             } else if(jsonText.startsWith("[")) {
                 JSONArray jsonArray = new JSONArray(jsonText);
@@ -610,6 +618,15 @@ public class ArchonClient {
     }
 
     /**
+     * Return the hash map containing the raw archon response keyed by the endpoint
+     *
+     * @return
+     */
+    public HashMap<String, String> getArchonRecordsMap() {
+        return archonRecordsMap;
+    }
+
+    /**
      * Set the print console so messages can be sent to the user
      *
      * @param printConsole
@@ -620,10 +637,12 @@ public class ArchonClient {
 
     /**
      * Method to test the client
+     *
      * @param args
      */
     public static void main(String[] args) throws JSONException {
-        String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
+        //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
+        String host = "http://quanta2.bobst.nyu.edu/~nathan/archon";
         ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
         archonClient.getSession();
 
@@ -664,19 +683,23 @@ public class ArchonClient {
         // get the accession
         //records = archonClient.getAccessionRecords();
         //System.out.println("Total Accessions: " + records.getString("total_records"));
-
+        /*
         // get the digital object records
         records = archonClient.getDigitalObjectRecords();
         System.out.println("Total Digital Objects: " + records.length());
 
-        /*records = archonClient.getCollectionRecords();
+        records = archonClient.getCollectionRecords();
         System.out.println("Total Collection Records: " + records.length());
 
         Iterator<String> keys = records.keys();
         while(keys.hasNext()) {
             String key  = keys.next();
-            JSONObject contentRecordsJS = archonClient.getCollectionContentRecords(key);
-            System.out.println("Total Collection Content Records: " + contentRecordsJS.length());
-        }*/
+
+            if(key.equals("811")) {
+                JSONObject contentRecordsJS = archonClient.getCollectionContentRecords(key);
+                System.out.println("Total Collection Content Records: " + contentRecordsJS.length());
+            }
+        }
+        */
     }
 }

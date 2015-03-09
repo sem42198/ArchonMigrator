@@ -10,7 +10,6 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Set;
 
 /**
  * Created by IntelliJ IDEA.
@@ -1790,7 +1789,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
         print("\nSaving URI Maps ...");
 
         try {
-            FileManager.saveUriMapData(uriMapFile, uriMap);
+            FileManager.saveObjectToFile(uriMapFile, uriMap);
         } catch (Exception e) {
             print("Unable to save URI map file " + uriMapFile.getName());
         }
@@ -1801,7 +1800,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      */
     public void loadURIMaps() {
         try {
-            HashMap uriMap  = (HashMap) FileManager.getUriMapData(uriMapFile);
+            HashMap uriMap  = (HashMap) FileManager.getObjectFromFile(uriMapFile);
 
             locationURIMap = (HashMap<String,String>)uriMap.get(LOCATION_KEY);
             subjectURIMap = (HashMap<String,String>)uriMap.get(SUBJECT_KEY);

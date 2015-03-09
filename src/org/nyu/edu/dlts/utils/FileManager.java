@@ -18,12 +18,12 @@ import java.io.*;
  */
 public class FileManager {
     /**
-     * Method to get script data that was saved to a binary file
+     * Method to get a binary object from a file
      * 
      * @param file
      * @return
      */
-    public static Object getUriMapData(File file) {
+    public static Object getObjectFromFile(File file) {
         FileInputStream fis = null;
 		ObjectInputStream in = null;
 
@@ -45,13 +45,13 @@ public class FileManager {
     }
 
     /**
-     * Method to save script data to a binary file
+     * Method to save binary data to file
      * 
      * @param file
      * @param scriptData
      * @throws Exception
      */
-    public static void saveUriMapData(File file, Object scriptData) throws Exception {
+    public static void saveObjectToFile(File file, Object scriptData) throws Exception {
         FileOutputStream fos = null;
 		ObjectOutputStream out = null;
 
