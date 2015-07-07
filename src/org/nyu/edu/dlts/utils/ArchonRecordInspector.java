@@ -8,10 +8,11 @@ import java.util.HashMap;
 import java.util.Iterator;
 
 /**
- * A simple class which allow easy inspecting of archon records for doing analysis
+ * A simple class which allow inspecting of Archon records for doing analysis
  *
  * Created by nathan on 3/4/2015.
  */
+
 public class ArchonRecordInspector {
     // used to connect to the archon client
     private static ArchonClient archonClient;
@@ -23,6 +24,8 @@ public class ArchonRecordInspector {
     // file used to save the records locally
     private static File jsonFile;
     private static File mapFile;
+
+    private static File parentDirectory;
 
     /**
      * Method to load the collection content for a particular collection record
@@ -38,8 +41,8 @@ public class ArchonRecordInspector {
         archonRecordsMap = archonClient.getArchonRecordsMap();
 
         // now save these records to files
-        jsonFile = new File("C:\\Users\\nathan\\temp\\content" + cidKey + ".json");
-        mapFile = new File("C:\\Users\\nathan\\temp\\content" + cidKey + ".bin");
+        jsonFile = new File(parentDirectory, "content_" + cidKey + ".json");
+        mapFile = new File(parentDirectory, "content_" + cidKey + ".bin");
 
         try {
             FileManager.saveTextData(jsonFile, contentRecordsJS.toString(2));
@@ -59,8 +62,8 @@ public class ArchonRecordInspector {
     public static void loadCollectionContentFromFile(String cidKey) {
         System.out.println("Loading content record from file ...\n");
 
-        jsonFile = new File("C:\\Users\\nathan\\temp\\content" + cidKey + ".json");
-        mapFile = new File("C:\\Users\\nathan\\temp\\content" + cidKey + ".bin");
+        jsonFile = new File(parentDirectory, "content_" + cidKey + ".json");
+        mapFile = new File(parentDirectory, "content_" + cidKey + ".bin");
 
         try {
             contentRecordsJS = FileManager.getJSONObject(jsonFile);
@@ -74,12 +77,27 @@ public class ArchonRecordInspector {
      * Method to run test on the collection content
      */
     private static void processCollectionContent() {
-        /*Iterator<String> keys = contentRecordsJS.keys();
+        String fullText = "";
+
+        Iterator<String> keys = contentRecordsJS.keys();
         while(keys.hasNext()) {
             String key = keys.next();
-        }*/
+            System.out.println("Processing content " + key);
 
-        // now get the number of records in the hash map
+            try {
+                JSONObject recordJS = contentRecordsJS.getJSONObject(key);
+                String parentId = recordJS.getString("ParentID");
+
+                if(parentId.equals(key)) {
+                    System.out.println("Circular Relation Ship Between Parent And Child");
+                    break;
+                }
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+        }
+
+        /* now get the number of records in the hash map
         int count = 0;
         for(String key: archonRecordsMap.keySet()) {
             System.out.println("content endpoint: " + key);
@@ -91,10 +109,19 @@ public class ArchonRecordInspector {
             } catch (JSONException e) {
                 e.printStackTrace();
             }
-        }
+        }*/
 
         System.out.println("\nNumber of Content Records From Merge JSON: " + contentRecordsJS.length());
-        System.out.println("Number of Content Records From Raw JSON: " + count);
+    }
+
+    /**
+     * Method to
+     */
+    public static void loadAccessions() {
+        JSONObject repositoryRecordsJS = archonClient.getRepositoryRecords();
+
+        JSONObject accessionRecordsJS = archonClient.getAccessionRecords();
+        System.out.println("Number of Accessions: " + accessionRecordsJS.length());
     }
 
     /**
@@ -103,17 +130,30 @@ public class ArchonRecordInspector {
      * @param args
      */
     public static void main(String[] args) throws JSONException {
+        // set the parent directory
+        parentDirectory = new File("/Users/nathan/temp");
+
         //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
-        String host = "http://quanta2.bobst.nyu.edu/~nathan/archon";
+        //String host = "http://quanta2.bobst.nyu.edu/~nathan/archon";
+        //archonClient = new ArchonClient(host, "admin", "admin");
+        //String host = "http://archivestest.unco.edu/archon";
+        String host = "http://localhost/~nathan/archon";
+        //archonClient = new ArchonClient(host, "MigAdmin", "111zwSHOO");
+        //String host = "http://128.122.90.55:9000/~nathan/archon";
+
         archonClient = new ArchonClient(host, "admin", "admin");
         archonClient.getSession();
 
         System.out.println("Connected to " + host + "\n\n");
 
+        // load the accessions records
+        loadAccessions();
+
         // load the content record
-        loadCollectionContentFromFile("811");
+        //loadCollectionContent("259");
+        //loadCollectionContentFromFile("811");
 
         // process the content records
-        processCollectionContent();
+        //processCollectionContent();
     }
 }

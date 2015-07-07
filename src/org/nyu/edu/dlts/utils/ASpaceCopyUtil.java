@@ -19,6 +19,8 @@ import java.util.Iterator;
  * Utility class for copying data from the AT to Archive Space
  */
 public class ASpaceCopyUtil implements  PrintConsole {
+    public static final String SUPPORTED_ASPACE_VERSION = "v1.3";
+
     // String to indicate when no ids where return from aspace backend
     private final String NO_ID = "no id assigned";
 
@@ -33,6 +35,11 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
     // used make http connection to archon
     private ArchonClient archonClient = null;
+
+    // used to store information about the archives space backend
+    private String aspaceInformation = "Simulator";
+
+    private String aspaceVersion = "";
 
     // hashmap that maps repository from old database with copy in new database
     private HashMap<String, String> repositoryURIMap = new HashMap<String, String>();
@@ -158,6 +165,10 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
     private JSONObject cachedResourcesJS;
 
+    // booleans used to convert some bbcode to html or blanks
+    private boolean bbcodeToHTML = false;
+    private boolean bbcodeToBlank = true;
+
     /**
      * The main constructor, used when running as a stand alone application
      *
@@ -235,6 +246,21 @@ public class ASpaceCopyUtil implements  PrintConsole {
     public void setProgressIndicators(JProgressBar progressBar, JLabel errorCountLabel) {
         this.progressBar = progressBar;
         this.errorCountLabel = errorCountLabel;
+    }
+
+    /**
+     * Set the option for either converting some bbcode to html
+     *
+     * @param option
+     */
+    public void setBBCodeOption(String option) {
+        if(option.equals("-bbcode_html")) {
+            bbcodeToHTML = true;
+            bbcodeToBlank = false;
+        } else {
+            bbcodeToHTML = false;
+            bbcodeToBlank = true;
+        }
     }
 
     /**
@@ -719,6 +745,59 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
+     * Method to copy classification records
+     *
+     * @throws Exception
+     */
+    public void copyClassificationRecords() throws Exception {
+        print("Copying Classification records ...");
+
+        // update the progress so that the title changes
+        updateProgress("Classifications", 0, 0);
+
+        JSONObject records = archonClient.getClassificationRecords();
+
+        int total = records.length();
+        int success = 0;
+        int count = 0;
+
+        Iterator<String> keys = records.keys();
+        while (keys.hasNext()) {
+            if (stopCopy) return;
+
+            String key = keys.next();
+
+            JSONObject classification = records.getJSONObject(key);
+
+            String arId = classification.getString("ID");
+
+
+            /*String jsonText = mapper.convertClassification(classification);
+            String id = saveRecord(ASpaceClient.CLASSIFICATION_ENDPOINT, jsonText, "Classification->" + classification.getString("Classification"));
+
+            if (!id.equalsIgnoreCase(NO_ID)) {
+                String uri = ASpaceClient.CLASSIFICATION_ENDPOINT + "/" + id;
+                classificationURIMap.put(arId, uri);
+                print("Copied Classification: " + classification + " :: " + id);
+                success++;
+            } else {
+                print("Fail -- Classification: " + classification);
+            }*/
+
+            count++;
+            updateProgress("classification", total, count);
+
+            String subjectTerm = classification.getString("Subject");
+            System.out.println(count + " :: Classification: " + subjectTerm);
+        }
+
+        updateRecordTotals("Subjects", total, success);
+
+        // try freeing some memory
+        freeMemory();
+    }
+
+    /**
      * Method to copy the digital object records
      *
      * @throws Exception
@@ -809,6 +888,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                 // check to see we just not saving the digital objects or copying them now
                 String digitalObjectListKey = null;
+
                 if(saveDigitalObjectsWithResources) {
                     if(digitalObject.getInt("CollectionID") != 0) {
                         digitalObjectListKey = "collection_" + digitalObject.get("CollectionID");
@@ -1372,7 +1452,36 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @return
      */
     public boolean getSession() {
-        return aspaceClient.getSession();
+        if (simulateRESTCalls) return true;
+
+        boolean connected = aspaceClient.getSession();
+
+        if (connected) {
+            aspaceInformation = aspaceClient.getArchivesSpaceInformation();
+            setASpaceVersion();
+        }
+
+        return connected;
+
+
+    }
+
+    /**
+     * Method to extract the aspace version from the information return from the backend
+     */
+    private void setASpaceVersion() {
+        try {
+            JSONObject infoJS = new JSONObject(aspaceInformation);
+            aspaceVersion = infoJS.getString("archivesSpaceVersion");
+        } catch (Exception e) {
+        }
+    }
+
+    /**
+     * Method to return the aspace version
+     */
+    public String getASpaceVersion() {
+        return aspaceVersion;
     }
 
     /** Method to add to resource map in a thread safe manner
@@ -1900,6 +2009,21 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
+     * A Method to remove bbcode from the title of Archival Objects
+     *
+     * @param title
+     */
+    private String cleanTitle(String title) {
+        if(bbcodeToHTML) {
+            title = title.replace("[i]", "<i>").replace("[/i]", "</i>");
+        } else if(bbcodeToBlank) {
+            title = title.replace("[i]", "").replace("[/i]", "");
+        }
+
+        return title;
+    }
+
+    /**
      * Method to test the conversion without having to startup the gui
      *
      * @param args
@@ -1907,12 +2031,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
     public static void main(String[] args) throws JSONException {
         //String host = "http://archives-dev.library.illinois.edu/archondev/uiuc";
         //ArchonClient archonClient = new ArchonClient(host, "aspace", "We$tbr0ok");
-        //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
-        String host = "http://localhost/~nathan/archon";
-        ArchonClient archonClient = new ArchonClient(host, "sa", "admin");
+        String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
+        //String host = "http://localhost/~nathan/archon";
+        ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
         archonClient.getSession();
 
-        ASpaceCopyUtil aspaceCopyUtil  = new ASpaceCopyUtil(archonClient, "http://54.81.48.185:8087", "admin", "admin");
+        ASpaceCopyUtil aspaceCopyUtil  = new ASpaceCopyUtil(archonClient, "http://54.227.35.51:8089", "admin", "admin");
         aspaceCopyUtil.setSimulateRESTCalls(true);
 
         try {
@@ -1926,8 +2050,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
             aspaceCopyUtil.copyEnumRecords();
             aspaceCopyUtil.copySubjectRecords();
             aspaceCopyUtil.copyCreatorRecords();
+            aspaceCopyUtil.copyClassificationRecords();
 
-            //aspaceCopyUtil.copyDigitalObjectRecords();
+            aspaceCopyUtil.copyDigitalObjectRecords();
             //aspaceCopyUtil.copyResourceRecords(100000, 1);
         } catch (Exception e) {
             e.printStackTrace();

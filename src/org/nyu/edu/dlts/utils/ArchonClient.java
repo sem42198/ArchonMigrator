@@ -420,7 +420,7 @@ public class ArchonClient {
                 }
             }
 
-            // now for each of the return digital objects add there
+            // now for each of the return digital objects add there component records
             keys = recordsJS.keys();
 
             while(keys.hasNext()) {

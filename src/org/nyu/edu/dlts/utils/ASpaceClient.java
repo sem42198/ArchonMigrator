@@ -3,17 +3,13 @@ package org.nyu.edu.dlts.utils;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.httpclient.NameValuePair;
-import org.apache.commons.httpclient.methods.DeleteMethod;
-import org.apache.commons.httpclient.methods.GetMethod;
-import org.apache.commons.httpclient.methods.PostMethod;
-import org.apache.commons.httpclient.methods.StringRequestEntity;
+import org.apache.commons.httpclient.methods.*;
 import org.apache.commons.httpclient.methods.multipart.MultipartRequestEntity;
 import org.apache.commons.httpclient.methods.multipart.Part;
 import org.apache.commons.httpclient.methods.multipart.StringPart;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
 
 /**
@@ -21,8 +17,8 @@ import java.util.HashMap;
  * User: nathan
  * Date: 9/6/12
  * Time: 3:59 PM
- *
- * This class hanldes all posting and reading from the ASpace project
+ * <p/>
+ * This class handles all posting and reading from the ASpace project
  */
 public class ASpaceClient {
     public static final String ADMIN_LOGIN_ENDPOINT = "/users/admin/login";
@@ -45,7 +41,8 @@ public class ASpaceClient {
     public static final String AGENT_PEOPLE_ENDPOINT = "/agents/people";
     public static final String AGENT_SOFTWARE_ENDPOINT = "/agents/software";
     public static final String ENUM_ENDPOINT = "/config/enumerations";
-    public static final String BATCH_IMPORT_ENDPOINT = "/batch_imports";
+    public static final String BATCH_IMPORT_ENDPOINT = "/batch_imports?migration=ArchivistToolkit";
+    public static final String INDEXER_ENDPOINT = "/aspace-indexer/";
 
     private HttpClient httpclient = new HttpClient();
     private String host = "";
@@ -57,6 +54,14 @@ public class ASpaceClient {
 
     // let keep all the errors we encounter so we can have a log
     private StringBuilder errorBuffer = new StringBuilder();
+
+    // a stop watch object to allowing pausing of the indexer
+    private String indexerHost = "";
+    private long pauseTimeInSec = 43200; // pause indexer for 12 hours initially
+    private StopWatch stopWatch = new StopWatch();
+
+    private boolean doPause = false;
+    private boolean firstTimePaused = true;
 
     // boolean to use when one once debug stuff
     private boolean debug = false;
@@ -86,16 +91,6 @@ public class ASpaceClient {
     }
 
     /**
-     * Method to return the host name
-     *
-     * @return
-     */
-    public String getHost() {
-        return host;
-    }
-
-    /**
-
      * Method to get the session using the admin login
      */
     public boolean getSession() {
@@ -116,13 +111,20 @@ public class ASpaceClient {
         try {
             String id = executePost(post, "session", "N/A", "N/A");
 
-            if(!id.isEmpty()) {
+            if (!id.isEmpty()) {
                 session = id;
                 haveSession = true;
+
+                // set the indexer host here for convenience sake. This assumes that the
+                // default indexer port of 8090 was not changed
+                indexerHost = host.replace("89", "90");
             }
         } catch (Exception e) {
             e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
         }
+
+        // start the stop watch object
+        stopWatch.start();
 
         // session was generated so return true
         return haveSession;
@@ -130,26 +132,24 @@ public class ASpaceClient {
 
     /**
      * Method to do a post to the json
+     *
      * @param route
      * @param jsonText
      * @return
      */
     public String post(String route, String jsonText, NameValuePair[] params, String atId) throws Exception {
-        // explicitly convert to utf8
-        //jsonText = convertToUTF8(jsonText);
-
         // Prepare HTTP post method.
         String fullUrl = host + route;
         PostMethod post = new PostMethod(fullUrl);
         post.setRequestEntity(new StringRequestEntity(jsonText, "application/json", null));
 
         // set any parameters
-        if(params != null) {
+        if (params != null) {
             post.setQueryString(params);
         }
 
         // add session to the header if it's not null
-        if(session != null) {
+        if (session != null) {
             post.setRequestHeader("X-ArchivesSpace-Session", session);
         }
 
@@ -157,12 +157,12 @@ public class ASpaceClient {
 
         // set the idName depending on the type of record being posted
         String idName = "id";
-        if(route.contains(BATCH_IMPORT_ENDPOINT)) {
+        if (route.contains(BATCH_IMPORT_ENDPOINT)) {
             idName = "saved";
 
             // since we dont want to keep large files around if text is bigger than 10 MB then
             // then reset jsonText
-            if (jsonText.length() > 1048576*10) {
+            if (jsonText.length() > 1048576 * 10) {
                 jsonText = "{ /* Record greater than 10 MB */}";
             }
         }
@@ -174,11 +174,10 @@ public class ASpaceClient {
      * Method to actually execute the post method
      *
      * @param post
-     * @param idName used to specify what the name of the id is in json text
-     * @param atId A quick way to identify the record that generated any errors
+     * @param idName   used to specify what the name of the id is in json text
+     * @param atId     A quick way to identify the record that generated any errors
      * @param jsonText Only used to return with the error message if needed
      * @return The id or session
-     *
      * @throws Exception
      */
     private String executePost(PostMethod post, String idName, String atId, String jsonText) throws Exception {
@@ -211,40 +210,64 @@ public class ASpaceClient {
 
                 if (responseBody.contains("\"errors\":[")) {
                     JSONArray responseJA = new JSONArray(responseBody);
-                    response = responseJA.getJSONObject(responseJA.length() -1);
+                    response = responseJA.getJSONObject(responseJA.length() - 1);
 
                     errorBuffer.append("Endpoint: ").append(post.getURI()).append("\n").
-                        append("AT Identifier:").append(atId).append("\n").
-                        append(statusMessage).append("\n\n").append(response.toString(2)).append("\n");
+                            append("AT Identifier:").append(atId).append("\n").
+                            append(statusMessage).append("\n\n").append(response.toString(2)).append("\n");
 
                     throw new Exception(response.toString(2));
-                } else if(responseBody.contains("{\"saved\":")) {
+                } else if (responseBody.contains("{\"saved\":")) {
                     JSONArray responseJA = new JSONArray(responseBody);
-                    response = responseJA.getJSONObject(responseJA.length() -1);
+                    response = responseJA.getJSONObject(responseJA.length() - 1);
                 } else {
                     response = new JSONObject(responseBody);
                 }
 
                 id = response.getString(idName);
 
-                if(id == null || id.trim().isEmpty()) {
+                if (id == null || id.trim().isEmpty()) {
                     errorBuffer.append("Endpoint: ").append(post.getURI()).append("\n").
-                        append("AT Identifier:").append(atId).append("\n").
-                        append(statusMessage).append("\n\n").append(response.toString(2)).append("\n");
+                            append("AT Identifier:").append(atId).append("\n").
+                            append(statusMessage).append("\n\n").append(response.toString(2)).append("\n");
 
                     throw new Exception(response.toString(2));
                 }
 
                 if (debug) System.out.println(response.toString(2));
+            } else if (statusCode == HttpStatus.SC_BAD_REQUEST && responseBody.contains("\"conflicting_record\":[\"")) {
+                // ArchivesSpace will send back a "Bad Request" response if you
+                // try to create a subject or agent that already exists.  In the
+                // JSON response, it also gives the URI of the record that
+                // caused the conflict.
+                //
+                // Return the ID of the conflicting record to re-use that
+                // record.
+
+                JSONObject response = new JSONObject(responseBody);
+                JSONArray conflictingRecords = response.getJSONObject("error").getJSONArray("conflicting_record");
+
+                String conflictingUri = conflictingRecords.getString(0);
+                id = conflictingUri.substring(conflictingUri.lastIndexOf(" ") + 1);
+
+                errorBuffer.append("Endpoint: ").append(post.getURI()).append("\n").
+                        append("AT Identifier:").append(atId).append("\n").
+                        append("Re-using existing ASpace record:").append(conflictingUri).append("\n");
             } else {
-                // if it a 500 error the ASpace then we need to add the JSON text
-                if(statusCode == HttpStatus.SC_INTERNAL_SERVER_ERROR) {
-                    responseBody = "JSON: " + jsonText + "\n\n" + responseBody;
+                // if it a 500 error the ASpace then we may need to add the JSON text
+                if (statusCode == HttpStatus.SC_INTERNAL_SERVER_ERROR) {
+                    if (responseBody.contains("PoolTimeout")) {
+                        responseBody = "Error: Sequel Pool Timeout ...";
+                    } else if (responseBody.contains("OutOfMemory")) {
+                        responseBody = "Fatal Error: ArchivesSpace Backend Crashed (OutOfMemoryError)\nPlease Restart ...";
+                    } else if (responseBody.contains("ThreadError")) {
+                        responseBody = "Fatal Error: ArchivesSpace Backend Crashed (OutOfStackSpaceError)\nPlease Restart ...";
+                    }
                 }
 
                 errorBuffer.append("Endpoint: ").append(post.getURI()).append("\n").
                         append("AT Identifier:").append(atId).append("\n").
-                        append(statusMessage).append("\n\n").append(responseBody).append("\n");
+                        append(statusMessage).append("\n").append(responseBody).append("\n\n");
 
                 post.releaseConnection();
                 throw new Exception(statusMessage);
@@ -269,20 +292,20 @@ public class ASpaceClient {
         GetMethod get = new GetMethod(fullUrl);
 
         // set any parameters
-        if(params != null) {
+        if (params != null) {
             get.setQueryString(params);
         }
 
         // add session to the header if it's not null
-        if(session != null) {
+        if (session != null) {
             get.setRequestHeader("X-ArchivesSpace-Session", session);
         }
 
-		// set the token in the header
-		//get.setRequestHeader("Authorization", "OAuth " + accessToken);
+        // set the token in the header
+        //get.setRequestHeader("Authorization", "OAuth " + accessToken);
         String responseBody = null;
 
-		try {
+        try {
             if (debug) System.out.println("get: " + fullUrl);
 
             int statusCode = httpclient.executeMethod(get);
@@ -290,22 +313,22 @@ public class ASpaceClient {
             String statusMessage = "Status code: " + statusCode +
                     "\nStatus text: " + get.getStatusText();
 
-			if (get.getStatusCode() == HttpStatus.SC_OK) {
+            if (get.getStatusCode() == HttpStatus.SC_OK) {
                 try {
-					responseBody = get.getResponseBodyAsString();
+                    responseBody = get.getResponseBodyAsString();
 
                     if (debug) System.out.println("response: " + responseBody);
-				} catch (Exception e) {
+                } catch (Exception e) {
                     errorBuffer.append(statusMessage).append("\n\n").append(responseBody).append("\n");
-					e.printStackTrace();
-					throw e;
-				}
-			} else {
+                    e.printStackTrace();
+                    throw e;
+                }
+            } else {
                 errorBuffer.append(statusMessage).append("\n");
             }
-		} finally {
-			get.releaseConnection();
-		}
+        } finally {
+            get.releaseConnection();
+        }
 
         return responseBody;
     }
@@ -321,14 +344,14 @@ public class ASpaceClient {
         DeleteMethod delete = new DeleteMethod(fullUrl);
 
         // add session to the header if it's not null
-        if(session != null) {
+        if (session != null) {
             delete.setRequestHeader("X-ArchivesSpace-Session", session);
         }
 
         int statusCode = httpclient.executeMethod(delete);
 
         String statusMessage = "Status code: " + statusCode +
-                    "\nStatus text: " + delete.getStatusText();
+                "\nStatus text: " + delete.getStatusText();
 
         if (debug) {
             System.out.println("delete: " + fullUrl + "\n" + statusMessage);
@@ -341,6 +364,7 @@ public class ASpaceClient {
 
     /**
      * Method to return the repositories in the ASpace database
+     *
      * @return
      */
     public HashMap<String, String> loadRepositories() {
@@ -348,14 +372,14 @@ public class ASpaceClient {
 
         try {
             String jsonText = get(REPOSITORY_ENDPOINT, null);
-            JSONArray jsonArray =  new JSONArray(jsonText);
+            JSONArray jsonArray = new JSONArray(jsonText);
 
-            if(jsonArray.length() != 0) {
-                for(int i = 0; i < jsonArray.length(); i++) {
-                    JSONObject json = (JSONObject)jsonArray.get(i);
-                    String shortName = (String)json.get("repo_code");
-                    String uri = (String)json.get("uri");
-                    repos.put(shortName,uri);
+            if (jsonArray.length() != 0) {
+                for (int i = 0; i < jsonArray.length(); i++) {
+                    JSONObject json = (JSONObject) jsonArray.get(i);
+                    String shortName = (String) json.get("repo_code");
+                    String uri = (String) json.get("uri");
+                    repos.put(shortName, uri);
                 }
 
                 return repos;
@@ -380,7 +404,12 @@ public class ASpaceClient {
             params[0] = new NameValuePair("page", "1");
 
             String jsonText = get(fullUrl, params);
-            JSONArray groups = new JSONArray(jsonText);
+            JSONArray groups = new JSONArray();
+
+            // make this null safe in case we are in test mode
+            if (jsonText != null) {
+                groups = new JSONArray(jsonText);
+            }
 
             return groups;
         } catch (Exception e) {
@@ -400,12 +429,12 @@ public class ASpaceClient {
 
         try {
             String jsonText = get(ENUM_ENDPOINT, null);
-            JSONArray jsonArray =  new JSONArray(jsonText);
+            JSONArray jsonArray = new JSONArray(jsonText);
 
-            if(jsonArray.length() != 0) {
-                for(int i = 0; i < jsonArray.length(); i++) {
-                    JSONObject json = (JSONObject)jsonArray.get(i);
-                    String name = (String)json.get("name");
+            if (jsonArray.length() != 0) {
+                for (int i = 0; i < jsonArray.length(); i++) {
+                    JSONObject json = (JSONObject) jsonArray.get(i);
+                    String name = (String) json.get("name");
                     dynamicEnums.put(name, json);
                 }
 
@@ -418,21 +447,29 @@ public class ASpaceClient {
     }
 
     /**
-     * Method to load the admin groups only
-     *
-     * @return
-     */
-    public JSONArray loadAdminGroups() {
-        return loadRepositoryGroups(ADMIN_REPOSITORY_ENDPOINT);
-    }
-
-    /**
      * Method to get any error messages that occurred while talking to the AT backend
      *
      * @return String containing error messages
      */
     public String getErrorMessages() {
         return errorBuffer.toString();
+    }
+
+    /**
+     * Method to return information about the archives space backend
+     *
+     * @return
+     */
+    public String getArchivesSpaceInformation() {
+        String info = "Unknown Archives Space Version ...";
+
+        try {
+            info = get("", null);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return info;
     }
 
     /**
@@ -447,8 +484,8 @@ public class ASpaceClient {
 
             String jsonText = get(uri, params);
 
-            if(jsonText != null && !jsonText.isEmpty()) {
-                if(jsonText.startsWith("[{")) {
+            if (jsonText != null && !jsonText.isEmpty()) {
+                if (jsonText.startsWith("[{")) {
                     JSONArray json = new JSONArray(jsonText);
                     return json.toString(4);
                 } else {
@@ -469,20 +506,20 @@ public class ASpaceClient {
      * @param paramString
      * @return
      */
-    private  NameValuePair[] getParams(String paramString) {
+    private NameValuePair[] getParams(String paramString) {
         String[] parts = paramString.split("\\s*,\\s*");
 
         // make sure we have parameters, otherwise exit
-        if(paramString.isEmpty() || parts.length < 1) {
+        if (paramString.isEmpty() || parts.length < 1) {
             return null;
         } else {
             NameValuePair[] params = new NameValuePair[parts.length];
 
-            for(int i = 0; i < parts.length; i++) {
+            for (int i = 0; i < parts.length; i++) {
                 try {
                     String[] sa = parts[i].split("\\s*=\\s*");
                     params[i] = new NameValuePair(sa[0], sa[1]);
-                } catch(Exception e) {
+                } catch (Exception e) {
                     return null;
                 }
             }
@@ -502,15 +539,10 @@ public class ASpaceClient {
 
     /**
      * Method to allow child aspace clients to append error messages
+     *
      * @param errorMessage
      */
     public synchronized void appendToErrorBuffer(String errorMessage) {
         errorBuffer.append(errorMessage);
-    }
-
-    // convert from internal Java String format -> UTF-8
-    private String convertToUTF8(String input) throws UnsupportedEncodingException {
-        String out = new String(input.getBytes("UTF-8"), "ISO-8859-1");
-        return out;
     }
 }

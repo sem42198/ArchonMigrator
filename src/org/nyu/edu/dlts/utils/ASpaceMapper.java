@@ -117,7 +117,7 @@ public class ASpaceMapper {
             if(!valuesList.contains(value)) {
                 valuesJA.put(value);
                 count++;
-                //System.out.println("Adding value " + value);
+                System.out.println("Adding value " + value);
             }
         }
 

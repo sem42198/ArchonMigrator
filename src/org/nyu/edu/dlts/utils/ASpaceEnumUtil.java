@@ -1241,7 +1241,7 @@ public class ASpaceEnumUtil {
 
     /**
      * Method to return the correct enum list based on the AT list name. Only editable list in the
-     * AT are returned
+     * Archon are returned
      *
      * @param listName
      * @return

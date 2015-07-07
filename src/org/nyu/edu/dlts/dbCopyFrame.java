@@ -28,8 +28,6 @@ import java.util.HashMap;
  * @author Nathan Stevens
  */
 public class dbCopyFrame extends JFrame {
-    // used for viewing the scripts in pre update 15 AT
-    private CodeViewerDialog cvd;
 
     // stores any migration errors
     private String migrationErrors = "";
@@ -179,6 +177,36 @@ public class dbCopyFrame extends JFrame {
                         consoleTextArea.append("Administrator authenticated ...\n");
                     }
 
+                    // check the current aspace version to make sure
+                    String aspaceVersion = ascopy.getASpaceVersion();
+
+                    if (!aspaceVersion.isEmpty() && !aspaceVersion.contains(ASpaceCopyUtil.SUPPORTED_ASPACE_VERSION)) {
+                        String message = "Unsupported Archivesspace Version\nSupport Version: " +
+                                ASpaceCopyUtil.SUPPORTED_ASPACE_VERSION + " ...\n";
+
+                        consoleTextArea.append(message);
+                        reEnableCopyButtons();
+                        return;
+                    }
+
+                    // process special options here. This could be done better but its the
+                    // quickest way to do it for now
+                    String ids = resourcesToCopyTextField.getText().trim();
+                    ArrayList<String> resourcesIDsList = new ArrayList<String>();
+
+                    if (!ids.isEmpty()) {
+                        String[] sa = ids.split("\\s*,\\s*");
+                        for (String id : sa) {
+                            // check to see if we are dealing with a special command
+                            // or an id to copy
+                            if (id.startsWith("-")) {
+                                processSpecialOption(ascopy, id);
+                            } else {
+                                resourcesIDsList.add(id);
+                            }
+                        }
+                    }
+
                     // set the progress bar from doing it's thing since the ascopy class is going to take over
                     copyProgressBar.setIndeterminate(false);
 
@@ -217,17 +245,6 @@ public class dbCopyFrame extends JFrame {
                         // get the number of resource to copy
                         resourcesToCopy = Integer.parseInt(numResourceToCopyTextField.getText());
 
-                        // get the resource ids of resources to copy
-                        String ids = resourcesToCopyTextField.getText().trim();
-                        if(!ids.isEmpty()) {
-                            String[] sa = ids.split("\\s*,\\s*");
-                            for(String id: sa) {
-                                resourcesIDsList.add(id);
-                            }
-
-                            resourcesToCopy = resourcesIDsList.size();
-                        }
-
                         // get the min/max resources to copy
                         int batchMin = Integer.parseInt(batchMinTextField.getText());
                         int batchMax = Integer.parseInt(batchMaxTextField.getText());
@@ -260,6 +277,17 @@ public class dbCopyFrame extends JFrame {
         });
 
         performer.start();
+    }
+
+    /**
+     * Method to process special commands
+     */
+    private void processSpecialOption(ASpaceCopyUtil ascopy, String option) {
+        if (option.contains("-bbcode_")) {
+            ascopy.setBBCodeOption(option);
+        } else {
+            consoleTextArea.setText("Unknown migration option ...\n");
+        }
     }
 
     /**
@@ -485,7 +513,7 @@ public class dbCopyFrame extends JFrame {
         CellConstraints cc = new CellConstraints();
 
         //======== this ========
-        setTitle("Archon Test Data Migrator (v05-15-2014A)");
+        setTitle("Archon Test Data Migrator (v07-01-2015)");
         Container contentPane = getContentPane();
         contentPane.setLayout(new BorderLayout());
 
@@ -539,7 +567,7 @@ public class dbCopyFrame extends JFrame {
                     }));
 
                 //---- apiLabel ----
-                apiLabel.setText("  Archives Space Version: v1.0.0");
+                apiLabel.setText("  Archives Space Version: v1.3.0");
                 apiLabel.setHorizontalTextPosition(SwingConstants.CENTER);
                 contentPanel.add(apiLabel, cc.xy(1, 1));
 
@@ -661,7 +689,7 @@ public class dbCopyFrame extends JFrame {
 
                 //---- threadsTextField ----
                 threadsTextField.setColumns(4);
-                threadsTextField.setText("8");
+                threadsTextField.setText("1");
                 contentPanel.add(threadsTextField, cc.xy(11, 13));
 
                 //---- simulateCheckBox ----
@@ -737,6 +765,7 @@ public class dbCopyFrame extends JFrame {
 
                     //---- paramsTextField ----
                     paramsTextField.setColumns(20);
+                    paramsTextField.setText("-bbcode_html");
                     panel1.add(paramsTextField);
                 }
                 contentPanel.add(panel1, cc.xywh(3, 25, 5, 1));
