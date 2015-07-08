@@ -23,6 +23,8 @@ import java.util.HashMap;
 public class ASpaceClient {
     public static final String ADMIN_LOGIN_ENDPOINT = "/users/admin/login";
     public static final String SUBJECT_ENDPOINT = "/subjects";
+    public static final String CLASSIFICATION_ENDPOINT = "/classifications";
+    public static final String CLASSIFICATION_TERM_ENDPOINT = "/classification_terms";
     public static final String REPOSITORY_ENDPOINT = "/repositories";
     public static final String ADMIN_REPOSITORY_ENDPOINT = "/repositories/1";
     public static final String GROUP_ENDPOINT = "/groups";
@@ -41,8 +43,7 @@ public class ASpaceClient {
     public static final String AGENT_PEOPLE_ENDPOINT = "/agents/people";
     public static final String AGENT_SOFTWARE_ENDPOINT = "/agents/software";
     public static final String ENUM_ENDPOINT = "/config/enumerations";
-    public static final String BATCH_IMPORT_ENDPOINT = "/batch_imports?migration=ArchivistToolkit";
-    public static final String INDEXER_ENDPOINT = "/aspace-indexer/";
+    public static final String BATCH_IMPORT_ENDPOINT = "/batch_imports";
 
     private HttpClient httpclient = new HttpClient();
     private String host = "";

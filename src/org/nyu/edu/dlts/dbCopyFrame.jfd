@@ -1130,38 +1130,7 @@
             </void>
             <void method="setProperty">
              <string>gridWidth</string>
-             <int>2</int>
-            </void>
-           </object>
-          </void>
-          <void method="add">
-           <object class="com.jformdesigner.model.FormComponent">
-            <string>javax.swing.JButton</string>
-            <void method="setProperty">
-             <string>text</string>
-             <string>  Test  </string>
-            </void>
-            <void property="name">
-             <string>testRecordButton</string>
-            </void>
-            <void method="addEvent">
-             <object class="com.jformdesigner.model.FormEvent">
-              <string>java.awt.event.ActionListener</string>
-              <string>actionPerformed</string>
-              <string>testRecordButtonActionPerformed</string>
-              <boolean>false</boolean>
-             </object>
-            </void>
-           </object>
-           <object class="com.jformdesigner.model.FormLayoutConstraints">
-            <class>com.jgoodies.forms.layout.CellConstraints</class>
-            <void method="setProperty">
-             <string>gridX</string>
-             <int>11</int>
-            </void>
-            <void method="setProperty">
-             <string>gridY</string>
-             <int>25</int>
+             <int>3</int>
             </void>
            </object>
           </void>

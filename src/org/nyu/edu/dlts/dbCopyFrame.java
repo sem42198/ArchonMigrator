@@ -91,7 +91,6 @@ public class dbCopyFrame extends JFrame {
         paramsLabel.setVisible(false);
         paramsTextField.setVisible(false);
         viewRecordButton.setVisible(false);
-        testRecordButton.setVisible(false);
         basicUIButton.setVisible(false);
 
         isBasicUI = true;
@@ -384,36 +383,10 @@ public class dbCopyFrame extends JFrame {
         }
 
 
-        CodeViewerDialog codeViewerDialog = new CodeViewerDialog(this, SyntaxConstants.SYNTAX_STYLE_JAVASCRIPT, recordJSON, true, true);
+        CodeViewerDialog codeViewerDialog = new CodeViewerDialog(this, SyntaxConstants.SYNTAX_STYLE_JAVASCRIPT, recordJSON, true);
         codeViewerDialog.setTitle("REST ENDPOINT URI: " + uri);
-        codeViewerDialog.setASpaceClient(aspaceClient);
         codeViewerDialog.pack();
         codeViewerDialog.setVisible(true);
-    }
-
-    /**
-     * This will allow multiple records to submit for testing.
-     */
-    private void testRecordButtonActionPerformed() {
-        try {
-            if(aspaceClient == null) {
-                String host = hostTextField.getText().trim();
-                String admin = adminTextField.getText();
-                String adminPassword = adminPasswordTextField.getText();
-
-                aspaceClient = new ASpaceClient(host, admin, adminPassword);
-                aspaceClient.getSession();
-            }
-
-            CodeViewerDialog codeViewerDialog = new CodeViewerDialog(this, SyntaxConstants.SYNTAX_STYLE_JAVASCRIPT, "", true, true);
-            codeViewerDialog.setTitle("Record Unit Test");
-            codeViewerDialog.setASpaceClient(aspaceClient);
-            codeViewerDialog.setUpMultipleRecordTest();
-            codeViewerDialog.pack();
-            codeViewerDialog.setVisible(true);
-        } catch (Exception e) {
-            consoleTextArea.setText(getStackTrace(e));
-        }
     }
 
     /**
@@ -502,7 +475,6 @@ public class dbCopyFrame extends JFrame {
         paramsLabel = new JLabel();
         paramsTextField = new JTextField();
         viewRecordButton = new JButton();
-        testRecordButton = new JButton();
         buttonBar = new JPanel();
         errorLogButton = new JButton();
         saveErrorsLabel = new JLabel();
@@ -777,16 +749,7 @@ public class dbCopyFrame extends JFrame {
                         viewRecordButtonActionPerformed();
                     }
                 });
-                contentPanel.add(viewRecordButton, cc.xywh(9, 25, 2, 1));
-
-                //---- testRecordButton ----
-                testRecordButton.setText("  Test  ");
-                testRecordButton.addActionListener(new ActionListener() {
-                    public void actionPerformed(ActionEvent e) {
-                        testRecordButtonActionPerformed();
-                    }
-                });
-                contentPanel.add(testRecordButton, cc.xy(11, 25));
+                contentPanel.add(viewRecordButton, cc.xywh(9, 25, 3, 1));
             }
             dialogPane.add(contentPanel, BorderLayout.CENTER);
 
@@ -915,7 +878,6 @@ public class dbCopyFrame extends JFrame {
     private JLabel paramsLabel;
     private JTextField paramsTextField;
     private JButton viewRecordButton;
-    private JButton testRecordButton;
     private JPanel buttonBar;
     private JButton errorLogButton;
     private JLabel saveErrorsLabel;
@@ -933,5 +895,4 @@ public class dbCopyFrame extends JFrame {
         frame.pack();
         frame.setVisible(true);
     }
-
 }

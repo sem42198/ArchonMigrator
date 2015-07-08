@@ -13,10 +13,11 @@ import java.util.Iterator;
 
 /**
  * Created by IntelliJ IDEA.
- * User: nathan
+ * User: Nathan Stevens
+ *
  * Date: 9/5/12
  * Time: 1:48 PM
- * Utility class for copying data from the AT to Archive Space
+ * Utility class for copying data from the Archon to Archivesspace
  */
 public class ASpaceCopyUtil implements  PrintConsole {
     public static final String SUPPORTED_ASPACE_VERSION = "v1.3";
@@ -58,6 +59,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
     // hashmap that maps names from old database with copy in new database
     private HashMap<String, String> nameURIMap = new HashMap<String, String>();
+
+    // hashmap that maps classification from old database with copy in new database
+    private HashMap<String, String> classificationURIMap = new HashMap<String, String>();
 
     // hashmap that maps accessions from old database with copy in new database
     private HashMap<String, String> accessionURIMap = new HashMap<String, String>();
@@ -771,30 +775,110 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             String arId = classification.getString("ID");
 
+            JSONObject classificationJS = mapper.convertClassification(classification);
 
-            /*String jsonText = mapper.convertClassification(classification);
-            String id = saveRecord(ASpaceClient.CLASSIFICATION_ENDPOINT, jsonText, "Classification->" + classification.getString("Classification"));
-
-            if (!id.equalsIgnoreCase(NO_ID)) {
-                String uri = ASpaceClient.CLASSIFICATION_ENDPOINT + "/" + id;
-                classificationURIMap.put(arId, uri);
-                print("Copied Classification: " + classification + " :: " + id);
-                success++;
-            } else {
-                print("Fail -- Classification: " + classification);
-            }*/
+            // copy this classification to each repository. The empty ones will be deleted
+            // once all the records are copied over
+            for(String repoURI: repositoryURIMap.values()) {
+                copyClassificationToRepository(repoURI, arId, classification, classificationJS);
+            }
 
             count++;
             updateProgress("classification", total, count);
 
-            String subjectTerm = classification.getString("Subject");
-            System.out.println(count + " :: Classification: " + subjectTerm);
+            String title = classification.getString("Title");
+            System.out.println(count + " :: Classification: " + title + "/ ID: " + arId);
         }
 
-        updateRecordTotals("Subjects", total, success);
+        updateRecordTotals("Classification", total, success);
 
         // try freeing some memory
         freeMemory();
+    }
+
+    /**
+     * Method to copy a classification record to a particular repository. This is only needed
+     * because classifications from Archon are not tied to a particular repository, but in
+     * ASpace they are. In principle they really shouldn't be.
+     *
+     * @param repoURI
+     * @param arId
+     * @param classification
+     * @param classificationJS
+     * @throws Exception
+     */
+    private int copyClassificationToRepository(String repoURI, String arId, JSONObject classification, JSONObject classificationJS) throws Exception {
+        // create the batch import JSON array and dummy URI now
+        JSONArray batchJA = new JSONArray();
+
+        String batchEndpoint = repoURI + ASpaceClient.BATCH_IMPORT_ENDPOINT;
+        String classificationURI = repoURI + ASpaceClient.CLASSIFICATION_ENDPOINT + "/" + arId;
+        String classificationTitle = classification.getString("Title");
+
+        if (classificationJS != null) {
+            classificationJS.put("uri", classificationURI);
+            batchJA.put(classificationJS);
+
+            // add the linked agents aka Names records
+            //addNames(classificationJS, classification);
+
+            // add any classification terms here
+            JSONArray classificationChildren = classification.getJSONArray("children");
+
+            for (int i = 0; i < classificationChildren.length(); i++) {
+                if (stopCopy) return 0;
+
+                JSONObject classificationTerm = classificationChildren.getJSONObject(i);
+
+                JSONObject classificationTermJS = mapper.convertClassification(classificationTerm);
+
+                String classificationTermTitle = classificationTerm.getString("Title");
+
+                String cId = classificationTerm.getString("ID");
+
+                String classificationTermURI = repoURI + ASpaceClient.CLASSIFICATION_TERM_ENDPOINT + "/" + cId;
+
+                if (classificationTermJS != null) {
+                    classificationTermJS.put("uri", classificationTermURI);
+
+                    classificationTermJS.put("classification", mapper.getReferenceObject(classificationURI));
+
+                    String pId = classificationTerm.getString("ParentID");
+                    if (!pId.equals(arId)) {
+                        String parentURI = repoURI + ASpaceClient.CLASSIFICATION_TERM_ENDPOINT + "/" + pId;
+                        classificationTermJS.put("parent", mapper.getReferenceObject(parentURI));
+                    }
+
+                    // add the linked agents aka Names records
+                    //addNames(digitalObjectChildJS, digitalObjectChild);
+
+                    batchJA.put(classificationTermJS);
+
+                    print("Added Classification Term: " + classificationTermTitle + " :: " + cId);
+                } else {
+                    print("Fail -- Classification Term to JSON: " + classificationTermTitle);
+                }
+            }
+
+            // now save the classification and its classification terms using the batch endpoint
+            String bids = saveRecord(batchEndpoint, batchJA.toString(2), arId);
+
+            if (!bids.equals(NO_ID)) {
+                if (!simulateRESTCalls) {
+                    JSONObject bidsJS = new JSONObject(bids);
+                    classificationURI = (new JSONArray(bidsJS.getString(classificationURI))).getString(0);
+                }
+                String key = repoURI + "_" + arId;
+                classificationURIMap.put(key, classificationURI);
+
+                print("Batch Copied Classification: " + classificationTitle + " :: " + key);
+            } else {
+                print("Batch Copy Fail -- : " + classificationTitle);
+                return 0;
+            }
+        }
+
+        return 1;
     }
 
     /**
@@ -2031,8 +2115,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
     public static void main(String[] args) throws JSONException {
         //String host = "http://archives-dev.library.illinois.edu/archondev/uiuc";
         //ArchonClient archonClient = new ArchonClient(host, "aspace", "We$tbr0ok");
-        String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
-        //String host = "http://localhost/~nathan/archon";
+        //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
+        String host = "http://localhost/~nathan/archon";
         ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
         archonClient.getSession();
 
@@ -2048,11 +2132,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
             //aspaceCopyUtil.setRecordDumpDirectory(recordDirectory);*/
 
             aspaceCopyUtil.copyEnumRecords();
-            aspaceCopyUtil.copySubjectRecords();
-            aspaceCopyUtil.copyCreatorRecords();
+            aspaceCopyUtil.copyRepositoryRecords();
+
+            //aspaceCopyUtil.copySubjectRecords();
+            //aspaceCopyUtil.copyCreatorRecords();
             aspaceCopyUtil.copyClassificationRecords();
 
-            aspaceCopyUtil.copyDigitalObjectRecords();
+            //aspaceCopyUtil.copyDigitalObjectRecords();
             //aspaceCopyUtil.copyResourceRecords(100000, 1);
         } catch (Exception e) {
             e.printStackTrace();

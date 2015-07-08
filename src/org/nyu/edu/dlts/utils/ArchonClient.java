@@ -355,10 +355,88 @@ public class ArchonClient {
         JSONObject recordsJS = new JSONObject();
         try {
             getAllRecords(recordsJS, CLASSIFICATION_ENDPOINT, 1);
+
+            // now we have to iterate through the return records and place the child records
+            // with their parent classifications, by doing several loops which is fine since there
+            // isnot going to be large amount
+
+            // first place all the records in a hashmap to make lookup efficient
+            HashMap<String, JSONObject> recordsMap = new HashMap<String, JSONObject>();
+            ArrayList<JSONObject> classificationList = new ArrayList<JSONObject>();
+            Iterator<String> keys = recordsJS.keys();
+
+            while (keys.hasNext()) {
+                String key = keys.next();
+
+                JSONObject recordJS = recordsJS.getJSONObject(key);
+
+                String id = recordJS.getString("ID");
+                recordsMap.put(id, recordJS);
+
+                // if this is a parent classification add it to the parent list
+                if(recordJS.getString("ParentID").equals("0")) {
+                    classificationList.add(recordJS);
+                }
+            }
+
+            // now go through the records and gather all children into an array
+             // now we need to go through the child records and organize by parent records
+            HashMap<String, JSONArray> childrenMap = new HashMap<String, JSONArray>();
+
+            for(String key: recordsMap.keySet()) {
+                JSONObject recordJS = recordsMap.get(key);
+
+                // first check to see if this is not a parent, if it is then continue
+                if(recordJS.getString("ParentID").equals("0")) {
+                    continue;
+                }
+
+                String parentID = getRootParent(recordsMap, recordJS);
+
+                // add the component json object to the hash map now
+                if(childrenMap.containsKey(parentID)) {
+                    JSONArray childrenJA = childrenMap.get(parentID);
+                    childrenJA.put(recordJS);
+                } else {
+                    JSONArray childrenJA = new JSONArray();
+                    childrenJA.put(recordJS);
+                    childrenMap.put(parentID, childrenJA);
+                }
+            }
+
+            // now for each classification record, add the children records
+            recordsJS = new JSONObject();
+
+            for(JSONObject recordJS: classificationList) {
+                String id = recordJS.getString("ID");
+                if(childrenMap.containsKey(id)) {
+                    recordJS.put("children", childrenMap.get(id));
+                } else {
+                    recordJS.put("children", new JSONArray());
+                }
+
+                recordsJS.put(id, recordJS);
+            }
+
             return recordsJS;
         } catch (Exception e) {
             e.printStackTrace();
             return null;
+        }
+    }
+
+    /**
+     * Method to
+     * @param recordsMap
+     * @param recordJS
+     * @return
+     */
+    private String getRootParent(HashMap<String, JSONObject> recordsMap, JSONObject recordJS) throws Exception {
+        if(recordJS.getString("ParentID").equals("0")) {
+            return recordJS.getString("ID");
+        } else {
+            JSONObject parentJS = recordsMap.get(recordJS.getString("ParentID"));
+            return getRootParent(recordsMap, parentJS);
         }
     }
 
@@ -677,7 +755,7 @@ public class ArchonClient {
         //System.out.println("Total Creators: " + records.getString("total_records"));
 
         // get the classifications
-        //records = archonClient.getClassificationRecords();
+        records = archonClient.getClassificationRecords();
         //System.out.println("Total Classifications: " + records.getString("total_records"));
 
         // get the accession

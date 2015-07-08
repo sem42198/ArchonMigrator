@@ -356,6 +356,31 @@ public class ASpaceMapper {
     }
 
     /**
+     * Method to convert the classification record
+     *
+     * @param record
+     * @return
+     * @throws Exception
+     */
+    public JSONObject convertClassification(JSONObject record) throws Exception {
+        // Main json object
+        JSONObject json = new JSONObject();
+
+        // set the model type
+        if(record.getString("ParentID").equals("0")) {
+            json.put("jsonmodel_type", "classification");
+        } else {
+            json.put("jsonmodel_type", "classification_term");
+        }
+
+        json.put("identifier", record.get("ClassificationIdentifier"));
+        json.put("title", record.get("Title"));
+        json.put("description", record.get("Description"));
+
+        return json;
+    }
+
+    /**
      * Method to add a bioghist note agent object
      *
      *
