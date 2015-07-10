@@ -10,6 +10,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Set;
 
 /**
  * Created by IntelliJ IDEA.
@@ -63,6 +64,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
     // hashmap that maps classification from old database with copy in new database
     private HashMap<String, String> classificationURIMap = new HashMap<String, String>();
 
+    // hashmap that maps classification term from old database with copy in new database
+    private HashMap<String, String> classificationTermURIMap = new HashMap<String, String>();
+
     // hashmap that maps accessions from old database with copy in new database
     private HashMap<String, String> accessionURIMap = new HashMap<String, String>();
 
@@ -84,6 +88,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
     // specify debug the boolean
     private boolean debug = true;
+
+    // random string generator to use when simulating rest calls
+    private RandomString randomString = new RandomString(3);
 
     // specify the current record type and ID in case we have fetal error during migration
     private String currentRecordType = "";
@@ -777,6 +784,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             JSONObject classificationJS = mapper.convertClassification(classification);
 
+            // add any creator record
+            addCreator(classificationJS, classification);
+
             // copy this classification to each repository. The empty ones will be deleted
             // once all the records are copied over
             for(String repoURI: repositoryURIMap.values()) {
@@ -819,10 +829,11 @@ public class ASpaceCopyUtil implements  PrintConsole {
             classificationJS.put("uri", classificationURI);
             batchJA.put(classificationJS);
 
-            // add the linked agents aka Names records
-            //addNames(classificationJS, classification);
+            // add the creator
+            addCreator(classificationJS, classification);
 
             // add any classification terms here
+            ArrayList<String> classificationTermURIs = new ArrayList<String>();
             JSONArray classificationChildren = classification.getJSONArray("children");
 
             for (int i = 0; i < classificationChildren.length(); i++) {
@@ -837,6 +848,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 String cId = classificationTerm.getString("ID");
 
                 String classificationTermURI = repoURI + ASpaceClient.CLASSIFICATION_TERM_ENDPOINT + "/" + cId;
+                classificationTermURIs.add(classificationTermURI);
 
                 if (classificationTermJS != null) {
                     classificationTermJS.put("uri", classificationTermURI);
@@ -850,7 +862,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                     }
 
                     // add the linked agents aka Names records
-                    //addNames(digitalObjectChildJS, digitalObjectChild);
+                    addCreator(classificationTermJS, classificationTerm);
 
                     batchJA.put(classificationTermJS);
 
@@ -867,6 +879,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 if (!simulateRESTCalls) {
                     JSONObject bidsJS = new JSONObject(bids);
                     classificationURI = (new JSONArray(bidsJS.getString(classificationURI))).getString(0);
+
+                    // now map all the classification term uris
+                    for(String uri: classificationTermURIs) {
+                        String key = repoURI + "_" + getIdFromURI(uri);
+                        String classificationTermURI = (new JSONArray(bidsJS.getString(uri))).getString(0);
+                        classificationTermURIMap.put(key, classificationTermURI);
+                    }
                 }
                 String key = repoURI + "_" + arId;
                 classificationURIMap.put(key, classificationURI);
@@ -879,6 +898,79 @@ public class ASpaceCopyUtil implements  PrintConsole {
         }
 
         return 1;
+    }
+
+    /**
+     * Method to copy accession records
+     *
+     * @throws Exception
+     */
+    public void copyAccessionRecords() throws Exception {
+        print("Copying Accession records ...");
+
+        // update the progress so that the title changes
+        updateProgress("Accessions", 0, 0);
+
+        JSONObject records = archonClient.getAccessionRecords();
+
+        // these are used to update the progress bar
+        int total = records.length();
+        int count = 0;
+        int success = 0;
+
+        Iterator<String> keys = records.keys();
+        while (keys.hasNext()) {
+            if (stopCopy) return;
+
+            String key = keys.next();
+
+            JSONObject accession = records.getJSONObject(key);
+
+            System.out.println("\n\nAccession Record:\n" + accession.toString(2));
+
+            String arId = accession.getString("ID");
+            String accessionTitle = accession.getString("Title");
+
+            JSONObject accessionJS = mapper.convertAccession(accession);
+
+            if (accessionJS != null) {
+                // add the subjects
+                //addSubjects(accessionJS, accession);
+
+                // add the linked agents aka Names records
+                //addNames(accessionJS, accession);
+
+                // add an instance that holds the location information
+                //addInstance(accessionJS, accession);
+
+                String repoURI = getRepositoryURI("");
+                String uri = repoURI + ASpaceClient.ACCESSION_ENDPOINT;
+                String id = saveRecord(uri, accessionJS.toString(), "Accession->" + accessionTitle);
+
+                if (!id.equalsIgnoreCase(NO_ID)) {
+                    uri = uri + "/" + id;
+
+                    // now add the event objects
+                    //addEvents(accession, repoURI, uri);
+
+                    accessionURIMap.put(arId, uri);
+                    print("Copied Accession: " + accessionTitle + " :: " + id);
+                    success++;
+                } else {
+                    print("Fail -- Accession: " + accessionTitle);
+                }
+            } else {
+                print("Fail -- Accession to JSON: " + accessionTitle);
+            }
+
+            count++;
+            updateProgress("Accessions", total, count);
+        }
+
+        updateRecordTotals("Accessions", total, success);
+
+        // refresh the database connection to prevent heap space error
+        freeMemory();
     }
 
     /**
@@ -1448,7 +1540,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
-     * Method to return the parent id. This is needed incase we have a parent that a type 2 so we actually
+     * Method to return the parent id. This is needed in case we have a parent that a type 2 so we actually
      * need to get the grandparent, or even older is this case
      *
      * @param resourceComponents
@@ -1514,6 +1606,118 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 componentJS.put("position", i);
                 i++;
             }
+        }
+    }
+
+    /**
+     * Add the subjects to the json resource, or resource component record
+     *
+     * @param json   The json representation of the AR record
+     * @param subjectIds The subjects ids
+     * @param recordTitle The record parent record title
+     * @throws Exception
+     */
+    private synchronized void addSubjects(JSONObject json, JSONArray subjectIds, String recordTitle) throws Exception {
+        JSONArray subjectsJA = new JSONArray();
+
+        for (int i = 0; i < subjectIds.length(); i++) {
+            String id = subjectIds.getString(i);
+            String subjectURI = subjectURIMap.get(id);
+
+            if (subjectURI != null) {
+                subjectsJA.put(mapper.getReferenceObject(subjectURI));
+
+                if (debug) print("Added subject to " + recordTitle);
+            } else {
+                print("No mapped subject found ...");
+            }
+        }
+
+        // if we had any subjects add them parent json record
+        if (subjectsJA.length() != 0) {
+            json.put("subjects", subjectsJA);
+        }
+    }
+
+    /**
+     * Add the name creator to the resource or resource component record
+     *
+     * @param json   object record
+     * @param record
+     * @throws Exception
+     */
+    private void addCreator(JSONObject json, JSONObject record) throws Exception {
+        String creatorID = record.getString("CreatorID");
+        String nameURI = nameURIMap.get(creatorID);
+
+        if (nameURI != null) {
+            json.put("creator", mapper.getReferenceObject(nameURI));
+        } else {
+            print("No mapped creator found ...");
+        }
+    }
+
+    /**
+     * Add the names to the resource or resource component record
+     *
+     * @param json       object record
+     * @param creatorIds The array of subject ids
+     * @throws Exception
+     */
+    private synchronized void addCreators(JSONObject json, JSONArray creatorIds, String recordTitle) throws Exception {
+        JSONArray linkedAgentsJA = new JSONArray();
+
+        for (int i = 0; i < creatorIds.length(); i++) {
+            String id = creatorIds.getString(i);
+            String nameURI = nameURIMap.get(id);
+
+            if (nameURI != null) {
+                JSONObject linkedAgentJS = new JSONObject();
+
+                linkedAgentJS.put("role", "creator");
+                linkedAgentJS.put("ref", nameURI);
+                linkedAgentsJA.put(linkedAgentJS);
+
+                if (debug) print("Added creator to " + recordTitle);
+            } else {
+                print("No mapped name found ...");
+            }
+        }
+
+        // if we had any subjects add them parent json record
+        if (linkedAgentsJA.length() != 0) {
+            json.put("linked_agents", linkedAgentsJA);
+        }
+    }
+
+    /**
+     * Add the classifications to the json resource, or accession record
+     *
+     * @param repoURI This is needed since classification are linked to specific repository
+     * @param json The json representation of the AR record
+     * @param classificationIds  The classification ids
+     * @param recordTitle The record parent record title
+     * @throws Exception
+     */
+    private synchronized void addClassifications(String repoURI, JSONObject json, JSONArray classificationIds, String recordTitle) throws Exception {
+        JSONArray classificationsJA = new JSONArray();
+
+        for (int i = 0; i < classificationIds.length(); i++) {
+            String key = repoURI + "_" + classificationIds.getString(i);
+            String classificationURI = getClassificationURI(key);
+
+            if (classificationURI != null) {
+                classificationsJA.put(mapper.getReferenceObject(classificationURI));
+
+                if (debug) print("Added classification to " + recordTitle);
+            } else {
+                print("No mapped classification found ...");
+            }
+        }
+
+        // if we had any subjects add them parent json record
+        if (classificationsJA.length() != 0) {
+            json.put("classifications", classificationsJA);
         }
     }
 
@@ -1639,6 +1843,22 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
+     * Method to return the new repository for a given domain object.
+     *
+     * @param key The hash map key
+     * @return The URI of the new repository
+     */
+    private synchronized String getClassificationURI(String key) {
+        if (classificationURIMap.containsKey(key)) {
+            return classificationURIMap.get(key);
+        } else if (classificationTermURIMap.containsKey(key)) {
+            return classificationTermURIMap.get(key);
+        }else {
+            return null;
+        }
+    }
+
+    /**
      * Method to save the record that takes into account running in stand alone
      * or within the AT
      *
@@ -1675,7 +1895,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
             }
 
             if(simulateRESTCalls) {
-                id = "10000001";
+                id = "1001" + randomString.nextString();
                 Thread.sleep(2);
             } else {
                 id = aspaceClient.post(endpoint, jsonText, params, atId);
@@ -2108,6 +2328,16 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
+     * Method to extract the id from a given URI
+     * @param uri
+     * @return
+     */
+    private String getIdFromURI(String uri) {
+        int beginIndex = uri.lastIndexOf("/") + 1;
+        return uri.substring(beginIndex);
+    }
+
+    /**
      * Method to test the conversion without having to startup the gui
      *
      * @param args
@@ -2115,13 +2345,14 @@ public class ASpaceCopyUtil implements  PrintConsole {
     public static void main(String[] args) throws JSONException {
         //String host = "http://archives-dev.library.illinois.edu/archondev/uiuc";
         //ArchonClient archonClient = new ArchonClient(host, "aspace", "We$tbr0ok");
-        //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
-        String host = "http://localhost/~nathan/archon";
+        String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
+        //String host = "http://localhost/~nathan/archon";
         ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
         archonClient.getSession();
 
         ASpaceCopyUtil aspaceCopyUtil  = new ASpaceCopyUtil(archonClient, "http://54.227.35.51:8089", "admin", "admin");
-        aspaceCopyUtil.setSimulateRESTCalls(true);
+        aspaceCopyUtil.getSession();
+        aspaceCopyUtil.setSimulateRESTCalls(false);
 
         try {
             /*ArrayList<String> recordList = new ArrayList<String>();
@@ -2137,6 +2368,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
             //aspaceCopyUtil.copySubjectRecords();
             //aspaceCopyUtil.copyCreatorRecords();
             aspaceCopyUtil.copyClassificationRecords();
+            //aspaceCopyUtil.copyAccessionRecords();
+
 
             //aspaceCopyUtil.copyDigitalObjectRecords();
             //aspaceCopyUtil.copyResourceRecords(100000, 1);

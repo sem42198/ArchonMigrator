@@ -4,6 +4,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 /**
@@ -15,13 +17,13 @@ import java.util.*;
  * Class to map AT data model to ASPace JSON data model
  */
 public class ASpaceMapper {
-    // String used when mapping AT access class to groups
+    // String used when mapping access class to groups
     public static final String ACCESS_CLASS_PREFIX = "_AccessClass_";
 
     // The utility class used to map to ASpace Enums
     private ASpaceEnumUtil enumUtil = new ASpaceEnumUtil();
 
-    // used to map AT vocabularies to ASpace vocabularies
+    // used to map vocabularies to ASpace vocabularies
     public String vocabularyURI = "/vocabularies/1";
 
     // the script mapper script
@@ -46,6 +48,9 @@ public class ASpaceMapper {
 
     // used when generating errors
     private String currentResourceRecordIdentifier;
+
+    // date formatter used to convert date string to date object
+    SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMdd");
 
     /**
      *  Main constructor
@@ -376,6 +381,135 @@ public class ASpaceMapper {
         json.put("identifier", record.get("ClassificationIdentifier"));
         json.put("title", record.get("Title"));
         json.put("description", record.get("Description"));
+
+        return json;
+    }
+
+    /**
+     * Method to convert an accession record to json ASpace JSON
+     *
+     * @param record
+     * @return
+     * @throws Exception
+     */
+    public JSONObject convertAccession(JSONObject record) throws Exception {
+        // Main json object
+        JSONObject json = new JSONObject();
+
+        // add the AT database Id as an external ID
+        addExternalId(record, json, "accession");
+
+        json.put("publish", record.getBoolean("Enabled"));
+
+        // check to make sure we have a title
+        String title = fixEmptyString(record.getString("Title"), null);
+
+        String identifier = record.getString("Identifier");
+        if (makeUnique) {
+            identifier = randomString.nextString();
+        }
+
+        Date date = getDate(record.getString("AccessionDate"));
+
+        if (date == null) {
+            String message = "Invalid Accession Date for" + identifier + "\n";
+            aspaceCopyUtil.addErrorMessage(message);
+            return null;
+        }
+
+        json.put("title", title);
+
+        json.put("accession_date", date);
+
+        json.put("id_0", identifier);
+
+        json.put("content_description", record.get("ScopeContent"));
+
+        json.put("condition_description", record.get("PhysicalDescription"));
+
+        json.put("general_note", record.get("Comments"));
+
+        /* add linked records (extents, dates, rights statement)*/
+
+        /*
+        // add the extent array containing one object or many depending if we using multiple extents
+        JSONArray extentJA = new JSONArray();
+        JSONObject extentJS = new JSONObject();
+
+        // first see to add mulitple extents
+        Set<ArchDescriptionPhysicalDescriptions> physicalDescriptions = record.getPhysicalDesctiptions();
+        convertPhysicalDescriptions(extentJA, physicalDescriptions);
+
+        // now add an extent if needed
+        if (extentJA.length() > 0 && extentPortionInParts) {
+            extentJS.put("portion", "part");
+        } else {
+            extentJS.put("portion", "whole");
+        }
+
+        extentJS.put("extent_type", enumUtil.getASpaceExtentType(record.getExtentType()));
+        extentJS.put("container_summary", record.getContainerSummary());
+
+        if (record.getExtentNumber() != null) {
+            extentJS.put("number", removeTrailingZero(record.getExtentNumber()));
+            extentJA.put(extentJS);
+        } else if (extentJA.length() == 0) { // add a default number
+            extentJS.put("number", "0");
+            extentJA.put(extentJS);
+        }
+
+        json.put("extents", extentJA);
+
+        // convert and add any accessions related dates here
+        JSONArray dateJA = new JSONArray();
+
+        // add the bulk dates
+        addDate(dateJA, record, "creation", "Accession: " + record.getAccessionNumber());
+
+        // add the archdescription dates now
+        Set<ArchDescriptionDates> archDescriptionDates = record.getArchDescriptionDates();
+        convertArchDescriptionDates(dateJA, archDescriptionDates, record.getAccessionNumber());
+
+        // if there are any dates add them to the main json record
+        if (dateJA.length() != 0) {
+            json.put("dates", dateJA);
+        }
+
+        // add external documents
+        JSONArray externalDocumentsJA = new JSONArray();
+        Set<ExternalReference> externalDocuments = record.getRepeatingData(ExternalReference.class);
+
+        if (externalDocuments != null && externalDocuments.size() != 0) {
+            convertExternalDocuments(externalDocumentsJA, externalDocuments);
+            json.put("external_documents", externalDocumentsJA);
+        }
+
+        // add a rights statement object
+        addRightsStatementRecord(record, json);
+
+        // add the collection management record now
+        addCollectionManagementRecord(record, json);
+
+        json.put("suppressed", record.getInternalOnly());
+
+        json.put("acquisition_type", enumUtil.getASpaceAcquisitionType(record.getAcquisitionType()));
+
+        json.put("resource_type", enumUtil.getASpaceAccessionResourceType(record.getResourceType()));
+
+        json.put("restrictions_apply", record.getRestrictionsApply());
+
+        json.put("retention_rule", record.getRetentionRule());
+
+        json.put("general_note", record.getGeneralAccessionNote());
+
+        json.put("access_restrictions", record.getAccessRestrictions());
+
+        json.put("access_restrictions_note", record.getAccessRestrictionsNote());
+
+        json.put("use_restrictions_note", record.getUseRestrictionsNote());
+
+        json.put("use_restrictions", record.getUseRestrictions());
+        */
 
         return json;
     }
@@ -1332,6 +1466,21 @@ public class ASpaceMapper {
             return Boolean.TRUE;
         } else {
             return Boolean.FALSE;
+        }
+    }
+
+    /**
+     * Method to return a date from a string formatted as
+     *
+     * @param dateString
+     * @return
+     */
+    private Date getDate(String dateString) {
+        try {
+            return simpleDateFormat.parse(dateString);
+        } catch (ParseException e) {
+            e.printStackTrace();
+            return null;
         }
     }
 

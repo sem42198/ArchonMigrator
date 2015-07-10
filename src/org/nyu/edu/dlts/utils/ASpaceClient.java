@@ -214,7 +214,7 @@ public class ASpaceClient {
                     response = responseJA.getJSONObject(responseJA.length() - 1);
 
                     errorBuffer.append("Endpoint: ").append(post.getURI()).append("\n").
-                            append("AT Identifier:").append(atId).append("\n").
+                            append("AR Identifier:").append(atId).append("\n").
                             append(statusMessage).append("\n\n").append(response.toString(2)).append("\n");
 
                     throw new Exception(response.toString(2));
@@ -229,7 +229,7 @@ public class ASpaceClient {
 
                 if (id == null || id.trim().isEmpty()) {
                     errorBuffer.append("Endpoint: ").append(post.getURI()).append("\n").
-                            append("AT Identifier:").append(atId).append("\n").
+                            append("AR Identifier:").append(atId).append("\n").
                             append(statusMessage).append("\n\n").append(response.toString(2)).append("\n");
 
                     throw new Exception(response.toString(2));
@@ -252,7 +252,7 @@ public class ASpaceClient {
                 id = conflictingUri.substring(conflictingUri.lastIndexOf(" ") + 1);
 
                 errorBuffer.append("Endpoint: ").append(post.getURI()).append("\n").
-                        append("AT Identifier:").append(atId).append("\n").
+                        append("AR Identifier:").append(atId).append("\n").
                         append("Re-using existing ASpace record:").append(conflictingUri).append("\n");
             } else {
                 // if it a 500 error the ASpace then we may need to add the JSON text
@@ -267,7 +267,7 @@ public class ASpaceClient {
                 }
 
                 errorBuffer.append("Endpoint: ").append(post.getURI()).append("\n").
-                        append("AT Identifier:").append(atId).append("\n").
+                        append("AR Identifier:").append(atId).append("\n").
                         append(statusMessage).append("\n").append(responseBody).append("\n\n");
 
                 post.releaseConnection();
@@ -448,7 +448,7 @@ public class ASpaceClient {
     }
 
     /**
-     * Method to get any error messages that occurred while talking to the AT backend
+     * Method to get any error messages that occurred while talking to the ASpace backend
      *
      * @return String containing error messages
      */
