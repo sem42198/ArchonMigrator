@@ -38,14 +38,11 @@ public class ASpaceEnumUtil {
     private ArrayList<String> validResourceTypes = new ArrayList<String>();
 
     private String[] ASpaceTermTypes = null;
-    private String[] ASpaceSubjectSources = null;
-    private String[] ASpaceNameSources = null;
     private String[] ASpaceNameRules = null;
     private String[] ASpaceNameDescriptionTypes = null;
     private String[] ASpaceLinkedAgentRoles = null;
     private String[] ASpaceExtentTypes = null;
     private String[] ASpaceDateEnums = null;
-    private String[] ASpaceCollectionManagementRecordEnums = null;
     private String[] ASpaceDigitalObjectTypes = null;
     private String[] ASpaceNoteTypes = null;
     private String[] ASpaceResourceLevels = null;
@@ -68,11 +65,9 @@ public class ASpaceEnumUtil {
     public ASpaceEnumUtil() {
         initASpaceTermTypes();
         initASpaceNameRules();
-        initASpaceNameSource();
         initASpaceNameDescriptionType();
         initASpaceExtentTypes();
         initASpaceDateEnums();
-        initASpaceCollectionManagementRecordEnums();
         initASpaceLinkedAgentRole();
         initASpaceDigitalObjectType();
         initASpaceFileVersionUseStatements();
@@ -156,19 +151,6 @@ public class ASpaceEnumUtil {
     }
 
     /**
-     * initialize the name source array
-     */
-    private void initASpaceNameSource() {
-        ASpaceNameSources = new String[]{
-                "local",    // 0
-                "naf",      // 1
-                "nad",      // 2
-                "ulan"      // 3
-        };
-
-    }
-
-    /**
      * Map the name source
      *
      * @param arID
@@ -188,6 +170,28 @@ public class ASpaceEnumUtil {
                 "aacr",     // 1
                 "dacs"      // 2
         };
+    }
+
+    /**
+     * Map the name source
+     *
+     * @param arID
+     * @return
+     */
+    public String getASpaceExtentType(int arID) {
+        String key = "extent_type_" + arID;
+        return getEnumValueForID(key, "linear_feet");
+    }
+
+    /**
+     * Map the aspace resource type
+     *
+     * @param arID
+     * @return
+     */
+    public String getASpaceResourceType(boolean arID) {
+        String key = "resource_type_" + arID;
+        return getEnumValueForID(key, "records");
     }
 
     /**
@@ -400,58 +404,14 @@ public class ASpaceEnumUtil {
     }
 
     /**
-     * Method to initASpaceialize array that holds enums of collection management records
-     */
-    private void initASpaceCollectionManagementRecordEnums() {
-        ASpaceCollectionManagementRecordEnums = new String[] {
-                "high",         // 0
-                "medium",       // 1
-                "low",          // 2
-                "new",          // 3
-                "in_progress",  // 4
-                "completed"     // 5
-        };
-    }
-
-    /**
-     * Map an AT value to a collection management record enum
+     * Map an AR value to a collection management record enum
      *
-     * @param atValue
+     * @param arID
      * @return
      */
-    public String getASpaceCollectionManagementRecordProcessingPriority(String atValue) {
-        atValue = atValue.toLowerCase();
-
-        if(atValue.equals("high")) {
-            return ASpaceCollectionManagementRecordEnums[0];
-        } else if(atValue.equals("medium")) {
-            return ASpaceCollectionManagementRecordEnums[1];
-        } else if(atValue.equals("low")) {
-            return ASpaceCollectionManagementRecordEnums[2];
-        } else {
-            return "low";
-        }
-    }
-
-    /**
-     * Map an AT value to a collection management record enum
-     * @param atValue
-     * @return
-     */
-    public String getASpaceCollectionManagementRecordProcessingStatus(String atValue) {
-        atValue = atValue.toLowerCase();
-
-        if (atValue.contains("new")) {
-            return ASpaceCollectionManagementRecordEnums[3];
-        } else if(atValue.contains("in progress")) {
-            return ASpaceCollectionManagementRecordEnums[4];
-        } else if(atValue.contains("processed")) {
-            return ASpaceCollectionManagementRecordEnums[5];
-        } else if(returnATValue) {
-            return atValue;
-        } else {
-            return UNMAPPED;
-        }
+    public String getASpaceCollectionManagementRecordProcessingPriority(int arID) {
+        String key = "processing_priority_" + arID;
+        return getEnumValueForID(key, "low");
     }
 
     /**

@@ -7,10 +7,7 @@ import org.json.JSONObject;
 
 import javax.swing.*;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Created by IntelliJ IDEA.
@@ -30,7 +27,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
     private ASpaceMapper mapper;
 
     // The utility class used to map to ASpace Enums
-    private ASpaceEnumUtil enumUtil = new ASpaceEnumUtil();
+    private ASpaceEnumUtil enumUtil;
 
     // used to make REST calls to archive space backend service
     private ASpaceClient aspaceClient = null;
@@ -180,6 +177,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
     private boolean bbcodeToHTML = false;
     private boolean bbcodeToBlank = true;
 
+    // the default repository id
+    private String defaultRepositoryId;
+
     /**
      * The main constructor, used when running as a stand alone application
      *
@@ -199,6 +199,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         // set the error buffer for the mapper
         mapper = new ASpaceMapper(this);
+
+        // set the enum util to that of the mapper
+        enumUtil = mapper.getEnumUtil();
 
         // set the file that contains the record map
         uriMapFile = new File(System.getProperty("user.home") + File.separator + "uriMaps.bin");
@@ -275,6 +278,14 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
+     * Method to set the default repository id
+     * @param id
+     */
+    public void setDefaultRepositoryId(String id) {
+        defaultRepositoryId = id;
+    }
+
+    /**
      * Method to copy the archon enum records
      */
     public void copyEnumRecords() throws Exception {
@@ -301,7 +312,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             JSONObject updatedEnumJS = mapper.mapEnumList(enumList, enumEndpoint);
 
-            if(updatedEnumJS != null) {
+            if(updatedEnumJS != null && !enumEndpoint.contains("enum_type=countries")) {
                 String endpoint = updatedEnumJS.getString("uri");
                 String jsonText = updatedEnumJS.toString();
                 String id = saveRecord(endpoint, jsonText, "EnumList->" + enumEndpoint);
@@ -772,6 +783,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
         int success = 0;
         int count = 0;
 
+        // the total repositories
+        int repositoryCount = repositoryURIMap.size() - 1;
+
         Iterator<String> keys = records.keys();
         while (keys.hasNext()) {
             if (stopCopy) return;
@@ -789,8 +803,17 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             // copy this classification to each repository. The empty ones will be deleted
             // once all the records are copied over
+            int copyCount = 0;
             for(String repoURI: repositoryURIMap.values()) {
-                copyClassificationToRepository(repoURI, arId, classification, classificationJS);
+                if (!repoURI.endsWith("/1")) {
+                    copyCount += copyClassificationToRepository(repoURI, arId, classification, classificationJS);
+                }
+            }
+
+            // increment the success variable only if we copied the classification records to each of the
+            // repositories
+            if(copyCount == repositoryCount) {
+                success++;
             }
 
             count++;
@@ -934,19 +957,26 @@ public class ASpaceCopyUtil implements  PrintConsole {
             JSONObject accessionJS = mapper.convertAccession(accession);
 
             if (accessionJS != null) {
+                String repoURI = getRepositoryURI(defaultRepositoryId);
+
                 // add the subjects
-                //addSubjects(accessionJS, accession);
+                addSubjects(accessionJS, accession.getJSONArray("Subjects"), accessionTitle);
 
                 // add the linked agents aka Names records
-                //addNames(accessionJS, accession);
+                addCreators(accessionJS, accession.getJSONArray("Creators"), accessionTitle);
+
+                // add the classification
+                if(accession.has("Classifications")) {
+                    addClassifications(repoURI, accessionJS, accession.getJSONArray("Classifications"), accessionTitle);
+                }
 
                 // add an instance that holds the location information
-                //addInstance(accessionJS, accession);
+                if(accession.has("Locations")) {
+                    addAccessionInstances(accessionJS, accession.getJSONArray("Locations"), accessionTitle);
+                }
 
-                String repoURI = getRepositoryURI("");
                 String uri = repoURI + ASpaceClient.ACCESSION_ENDPOINT;
                 String id = saveRecord(uri, accessionJS.toString(), "Accession->" + accessionTitle);
-
                 if (!id.equalsIgnoreCase(NO_ID)) {
                     uri = uri + "/" + id;
 
@@ -1722,6 +1752,125 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
+     * Method to add an instance to an Accession record
+     *
+     * @param accessionJS
+     * @param locations
+     * @param accessionTitle
+     */
+    private synchronized void addAccessionInstances(JSONObject accessionJS, JSONArray locations, String accessionTitle) throws Exception {
+        JSONArray instancesJA = new JSONArray();
+
+        for (int i = 0; i < locations.length(); i++) {
+            JSONObject instanceJS = new JSONObject();
+            JSONObject location = locations.getJSONObject(i);
+
+            // set the type
+            instanceJS.put("instance_type", "accession");
+
+            // add the container now
+            JSONObject containerJS = new JSONObject();
+
+            containerJS.put("type_1", "object");
+            containerJS.put("indicator_1", location.get("Content"));
+
+            // add the extent information
+            if(location.has("Extent")) {
+                containerJS.put("container_extent", location.getString("Extent"));
+                containerJS.put("container_extent_type", enumUtil.getASpaceExtentType(location.getInt("ExtentUnitID")));
+            }
+
+            // add a location record record now
+            String building = location.getString("Location");
+            String coordinate1 = location.getString("RangeValue");
+            String coordinate2 = location.getString("Section");
+            String coordinate3 = location.getString("Shelf");
+
+            String locationURI = getLocationURI(building, coordinate1, coordinate2, coordinate3);
+
+            if(locationURI != null) {
+                Date date = new Date(); // this is need to have valid container_location json record
+
+                JSONArray locationsJA = new JSONArray();
+
+                JSONObject locationJS = new JSONObject();
+                locationJS.put("status", "current");
+                locationJS.put("start_date", date);
+                locationJS.put("ref", locationURI);
+
+                locationsJA.put(locationJS);
+
+                // put all the records together now
+                containerJS.put("container_locations", locationsJA);
+            }
+
+            instanceJS.put("container", containerJS);
+
+            instancesJA.put(instanceJS);
+        }
+
+        // if we had any instances add them parent json record
+        if (instancesJA.length() != 0) {
+            accessionJS.put("instances", instancesJA);
+        }
+    }
+
+    /**
+     * Method to either create or return a location record based on the coordinate and so on
+     * @param building
+     * @param coordinate1
+     * @param coordinate2
+     * @param coordinate3
+     * @return
+     */
+    private String getLocationURI(String building, String coordinate1, String coordinate2, String coordinate3) throws Exception {
+        String key = building;
+
+        // lets create a JSON object for the location in case we need to save it
+        JSONObject locationJS = new JSONObject();
+        locationJS.put("building", building);
+
+        if (!coordinate1.equals("null") && !coordinate1.isEmpty()) {
+            locationJS.put("coordinate_1_label", "Range");
+            locationJS.put("coordinate_1_indicator", coordinate1);
+            key += "-" + coordinate1;
+        } else {
+            // put in dummy range so record saves
+            locationJS.put("coordinate_1_label", "Range");
+            locationJS.put("coordinate_1_indicator", "0");
+            key += "-0";
+        }
+
+        if (!coordinate2.equals("null") && !coordinate2.isEmpty()) {
+            locationJS.put("coordinate_2_label", "Section");
+            locationJS.put("coordinate_2_indicator", coordinate2);
+            key += "-" + coordinate2;
+        }
+
+        if (!coordinate3.equals("null") && !coordinate3.isEmpty()) {
+            locationJS.put("coordinate_3_label", "Shelf");
+            locationJS.put("coordinate_3_indicator", coordinate3);
+            key += "-" + coordinate3;
+        }
+
+        if(locationURIMap.containsKey(key)) {
+            return locationURIMap.get(key);
+        } else {
+            String id = saveRecord(ASpaceClient.LOCATION_ENDPOINT, locationJS.toString(), "Location->" + key);
+
+            if (!id.equalsIgnoreCase(NO_ID)) {
+                String uri = ASpaceClient.LOCATION_ENDPOINT + "/" + id;
+                locationURIMap.put(key, uri);
+                print("Copied Location: " + key + " :: " + id);
+                return uri;
+            } else {
+                print("Fail -- Location: " + key);
+                return null;
+            }
+        }
+    }
+
+    /**
      * Method to start the start the time watch
      */
     private void startWatch() {
@@ -2353,7 +2502,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
         ASpaceCopyUtil aspaceCopyUtil  = new ASpaceCopyUtil(archonClient, "http://54.227.35.51:8089", "admin", "admin");
         aspaceCopyUtil.getSession();
         aspaceCopyUtil.setSimulateRESTCalls(false);
-
+        aspaceCopyUtil.setDefaultRepositoryId("1");
         try {
             /*ArrayList<String> recordList = new ArrayList<String>();
             recordList.add("4719");
@@ -2365,14 +2514,17 @@ public class ASpaceCopyUtil implements  PrintConsole {
             aspaceCopyUtil.copyEnumRecords();
             aspaceCopyUtil.copyRepositoryRecords();
 
-            //aspaceCopyUtil.copySubjectRecords();
-            //aspaceCopyUtil.copyCreatorRecords();
+            aspaceCopyUtil.copySubjectRecords();
+            aspaceCopyUtil.copyCreatorRecords();
             aspaceCopyUtil.copyClassificationRecords();
-            //aspaceCopyUtil.copyAccessionRecords();
+            aspaceCopyUtil.copyAccessionRecords();
 
 
             //aspaceCopyUtil.copyDigitalObjectRecords();
             //aspaceCopyUtil.copyResourceRecords(100000, 1);
+
+            // print out the error messages
+            System.out.println("\n\nSave Errors:\n" + aspaceCopyUtil.getSaveErrorMessages());
         } catch (Exception e) {
             e.printStackTrace();
         }

@@ -75,7 +75,15 @@ public class ASpaceMapper {
     }
 
     /**
-     * This method is used to map AT lookup list values into a dynamic enum.
+     * Method to return the enum util
+     * @return
+     */
+    public ASpaceEnumUtil getEnumUtil() {
+        return enumUtil;
+    }
+
+    /**
+     * This method is used to map AR lookup list values into a dynamic enum.
      *
      * @param enumList
      * @return
@@ -113,6 +121,9 @@ public class ASpaceMapper {
             if(toLowerCase) {
                 value = value.toLowerCase();
             }
+
+            // some values have spaces which space normally uses underscore for
+            value = value.replace(" ", "_");
 
             // map the id to value
             String id = idPrefix + "_" + enumJS.get("ID");
@@ -399,7 +410,7 @@ public class ASpaceMapper {
         // add the AT database Id as an external ID
         addExternalId(record, json, "accession");
 
-        json.put("publish", record.getBoolean("Enabled"));
+        json.put("publish", convertToBoolean(record.getInt("Enabled")));
 
         // check to make sure we have a title
         String title = fixEmptyString(record.getString("Title"), null);
@@ -429,66 +440,34 @@ public class ASpaceMapper {
 
         json.put("general_note", record.get("Comments"));
 
+        if(record.has("MaterialTypeID")) {
+            json.put("resource_type", enumUtil.getASpaceResourceType(record.has("MaterialTypeID")));
+        }
+
         /* add linked records (extents, dates, rights statement)*/
 
-        /*
         // add the extent array containing one object or many depending if we using multiple extents
-        JSONArray extentJA = new JSONArray();
-        JSONObject extentJS = new JSONObject();
+        if(record.has("ReceivedExtent")) {
+            JSONArray extentJA = new JSONArray();
+            JSONObject extentJS = new JSONObject();
 
-        // first see to add mulitple extents
-        Set<ArchDescriptionPhysicalDescriptions> physicalDescriptions = record.getPhysicalDesctiptions();
-        convertPhysicalDescriptions(extentJA, physicalDescriptions);
-
-        // now add an extent if needed
-        if (extentJA.length() > 0 && extentPortionInParts) {
-            extentJS.put("portion", "part");
-        } else {
+            extentJS.put("extent_type", enumUtil.getASpaceExtentType(record.getInt("ReceivedExtentUnitID")));
+            extentJS.put("number", record.getString("ReceivedExtent"));
             extentJS.put("portion", "whole");
-        }
 
-        extentJS.put("extent_type", enumUtil.getASpaceExtentType(record.getExtentType()));
-        extentJS.put("container_summary", record.getContainerSummary());
-
-        if (record.getExtentNumber() != null) {
-            extentJS.put("number", removeTrailingZero(record.getExtentNumber()));
             extentJA.put(extentJS);
-        } else if (extentJA.length() == 0) { // add a default number
-            extentJS.put("number", "0");
-            extentJA.put(extentJS);
+            json.put("extents", extentJA);
         }
 
-        json.put("extents", extentJA);
-
-        // convert and add any accessions related dates here
-        JSONArray dateJA = new JSONArray();
-
-        // add the bulk dates
-        addDate(dateJA, record, "creation", "Accession: " + record.getAccessionNumber());
-
-        // add the archdescription dates now
-        Set<ArchDescriptionDates> archDescriptionDates = record.getArchDescriptionDates();
-        convertArchDescriptionDates(dateJA, archDescriptionDates, record.getAccessionNumber());
-
-        // if there are any dates add them to the main json record
-        if (dateJA.length() != 0) {
-            json.put("dates", dateJA);
-        }
-
-        // add external documents
-        JSONArray externalDocumentsJA = new JSONArray();
-        Set<ExternalReference> externalDocuments = record.getRepeatingData(ExternalReference.class);
-
-        if (externalDocuments != null && externalDocuments.size() != 0) {
-            convertExternalDocuments(externalDocumentsJA, externalDocuments);
-            json.put("external_documents", externalDocumentsJA);
-        }
-
-        // add a rights statement object
-        addRightsStatementRecord(record, json);
+        // add the inclusive dates
+        addDate(record.getString("InclusiveDates"), json, "inclusive", "other");
 
         // add the collection management record now
-        addCollectionManagementRecord(record, json);
+        if(record.has("ExpectedCompletionDate")) {
+            addCollectionManagementRecord(record, json);
+        }
+
+        /*
 
         json.put("suppressed", record.getInternalOnly());
 
@@ -512,6 +491,27 @@ public class ASpaceMapper {
         */
 
         return json;
+    }
+
+    /**
+     * Method to return a collection management record object from an accession
+     *
+     * @param record
+     * @param recordJS
+     * @return
+     * @throws Exception
+     */
+    public void addCollectionManagementRecord(JSONObject record, JSONObject recordJS) throws Exception {
+        // Main json object
+        JSONObject json = new JSONObject();
+
+        json.put("processing_plan", "Expected Completion Date: " + record.get("ExpectedCompletionDate"));
+
+        if (record.has("ProcessingPriorityID")) {
+            json.put("processing_priority", enumUtil.getASpaceCollectionManagementRecordProcessingPriority(record.getInt("ProcessingPriorityID")));
+        }
+
+        recordJS.put("collection_management", json);
     }
 
     /**
@@ -584,7 +584,7 @@ public class ASpaceMapper {
         String title = record.getString("Title");
         json.put("title", title);
 
-        boolean dateAdded = addDate(record, json, "digitized");
+        boolean dateAdded = addDate(record.getString("Date"), json, null, "digitized");
 
         // need to add title if no date or title
         if(title.isEmpty() && !dateAdded) {
@@ -894,7 +894,7 @@ public class ASpaceMapper {
         String title = record.getString("Title");
         json.put("title", title);
 
-        boolean dateAdded = addDate(record, json, "created");
+        boolean dateAdded = addDate(record.getString("Date"), json, null, "created");
 
         // need to add title if no date or title
         if(title.isEmpty() && !dateAdded) {
@@ -935,18 +935,23 @@ public class ASpaceMapper {
     /**
      * Method to add a date json object
      *
-     * @param record
+     * @param dateExpression
      * @param json
      * @param label
      */
-    private boolean addDate(JSONObject record, JSONObject json, String label) throws Exception {
-        String dateExpression = record.getString("Date");
+    private boolean addDate(String dateExpression, JSONObject json, String dateType, String label) throws Exception {
+        //String dateExpression = record.getString("Date");
         if(dateExpression.isEmpty()) return false;
 
         JSONArray dateJA = new JSONArray();
         JSONObject dateJS = new JSONObject();
 
-        dateJS.put("date_type", "single");
+        if(dateType == null) {
+            dateJS.put("date_type", "single");
+        } else {
+            dateJS.put("date_type", dateType);
+        }
+
         dateJS.put("label", label);
         dateJS.put("expression", dateExpression);
 
