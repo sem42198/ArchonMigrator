@@ -64,6 +64,10 @@ public class ASpaceCopyUtil implements  PrintConsole {
     // hashmap that maps classification term from old database with copy in new database
     private HashMap<String, String> classificationTermURIMap = new HashMap<String, String>();
 
+    // hashset to keep track of classifications ids which have been linked to a record
+    // so un-liked classifications can be clean deleted
+    private HashSet<String> linkedClassificationSet = new HashSet<String>();
+
     // hashmap that maps accessions from old database with copy in new database
     private HashMap<String, String> accessionURIMap = new HashMap<String, String>();
 
@@ -425,7 +429,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                         groupJS.put("member_usernames", membersJA);
                     }
 
-                    // map this group to an AT access class
+                    // map this group to an AR access class
                     mapper.mapAccessClass(repositoryGroupURIMap, groupJS, repoURI);
                 } catch (JSONException e) {
                     e.printStackTrace();
@@ -467,7 +471,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
             String userName = user.getString("DisplayName");
 
             // check to see if the is admin is set to true, otherwise continue
-            if(user.getInt("IsAdminUser") == 0 || user.getString("login").equals("admin")) {
+            if(user.getInt("IsAdminUser") == 0 || user.getString("Login").equals("admin")) {
                 print("None admin or duplicate user: " + userName + ", not migrating ...");
                 continue;
             }
@@ -576,16 +580,21 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 subjectToAgentList.add(subject);
                 success++;
             } else {
-                String jsonText = mapper.convertSubject(subject);
-                String id = saveRecord(ASpaceClient.SUBJECT_ENDPOINT, jsonText, "Subject->" + subject.getString("Subject"));
+                JSONObject json = mapper.convertSubject(subject);
 
-                if(!id.equalsIgnoreCase(NO_ID)) {
-                    String uri = ASpaceClient.SUBJECT_ENDPOINT + "/" + id;
-                    subjectURIMap.put(arId, uri);
-                    print("Copied Subject: " + subject + " :: " + id);
-                    success++;
+                if(json != null) {
+                    String id = saveRecord(ASpaceClient.SUBJECT_ENDPOINT, json.toString(), "Subject->" + subject.getString("Subject"));
+
+                    if (!id.equalsIgnoreCase(NO_ID)) {
+                        String uri = ASpaceClient.SUBJECT_ENDPOINT + "/" + id;
+                        subjectURIMap.put(arId, uri);
+                        print("Copied Subject: " + subject + " :: " + id);
+                        success++;
+                    } else {
+                        print("Fail -- Subject: " + subject);
+                    }
                 } else {
-                    print("Fail -- Subject: " + subject);
+                    print("Error Convert Subject Record to JSON: " + subject);
                 }
             }
 
@@ -899,6 +908,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
             String bids = saveRecord(batchEndpoint, batchJA.toString(2), arId);
 
             if (!bids.equals(NO_ID)) {
+                String parentKey = repoURI + "_" + arId;
+
                 if (!simulateRESTCalls) {
                     JSONObject bidsJS = new JSONObject(bids);
                     classificationURI = (new JSONArray(bidsJS.getString(classificationURI))).getString(0);
@@ -907,13 +918,17 @@ public class ASpaceCopyUtil implements  PrintConsole {
                     for(String uri: classificationTermURIs) {
                         String key = repoURI + "_" + getIdFromURI(uri);
                         String classificationTermURI = (new JSONArray(bidsJS.getString(uri))).getString(0);
-                        classificationTermURIMap.put(key, classificationTermURI);
+
+                        // need to store the parent classification key along with the
+                        // term uri so we can keep track of which classifications are being used
+                        String value = classificationTermURI + "," + parentKey;
+                        classificationTermURIMap.put(key, value);
                     }
                 }
-                String key = repoURI + "_" + arId;
-                classificationURIMap.put(key, classificationURI);
 
-                print("Batch Copied Classification: " + classificationTitle + " :: " + key);
+                classificationURIMap.put(parentKey, classificationURI);
+
+                print("Batch Copied Classification: " + classificationTitle + " :: " + parentKey);
             } else {
                 print("Batch Copy Fail -- : " + classificationTitle);
                 return 0;
@@ -963,7 +978,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 addSubjects(accessionJS, accession.getJSONArray("Subjects"), accessionTitle);
 
                 // add the linked agents aka Names records
-                addCreators(accessionJS, accession.getJSONArray("Creators"), accessionTitle);
+                JSONArray linkedAgentsJA = addCreators(accessionJS, accession.getJSONArray("Creators"), accessionTitle);
+
+                // add the donors
+                if(accession.has("Donor") && !accession.getString("Donor").isEmpty()) {
+                    addDonor(linkedAgentsJA, accession, accessionTitle);
+                }
 
                 // add the classification
                 if(accession.has("Classifications")) {
@@ -1682,7 +1702,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         if (nameURI != null) {
             json.put("creator", mapper.getReferenceObject(nameURI));
-        } else {
+        } else if (!creatorID.isEmpty()) {
             print("No mapped creator found ...");
         }
     }
@@ -1694,7 +1714,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param creatorIds The array of subject ids
      * @throws Exception
      */
-    private synchronized void addCreators(JSONObject json, JSONArray creatorIds, String recordTitle) throws Exception {
+    private synchronized JSONArray addCreators(JSONObject json, JSONArray creatorIds, String recordTitle) throws Exception {
         JSONArray linkedAgentsJA = new JSONArray();
 
         for (int i = 0; i < creatorIds.length(); i++) {
@@ -1715,9 +1735,67 @@ public class ASpaceCopyUtil implements  PrintConsole {
         }
 
         // if we had any subjects add them parent json record
-        if (linkedAgentsJA.length() != 0) {
-            json.put("linked_agents", linkedAgentsJA);
+        json.put("linked_agents", linkedAgentsJA);
+
+        return linkedAgentsJA;
+    }
+
+    /**
+     * Method to create an agent record and add it to the Accession record as a donor
+     *
+     * @param linkedAgentsJA
+     * @param accession
+     * @param accessionTitle
+     */
+    private void addDonor(JSONArray linkedAgentsJA, JSONObject accession, String accessionTitle) throws Exception {
+        String donorName = accession.getString("Donor");
+
+        String nameURI = getDonorURI(donorName, accession, accessionTitle);
+
+        if (nameURI != null) {
+            JSONObject linkedAgentJS = new JSONObject();
+
+            linkedAgentJS.put("role", "source");
+            linkedAgentJS.put("relator", "dnr");
+            linkedAgentJS.put("ref", nameURI);
+            linkedAgentsJA.put(linkedAgentJS);
+
+            if (debug) print("Added donor to " + accessionTitle);
+        } else {
+            print("No mapped name found ...");
         }
+    }
+
+    /**
+     * Method to see if we need to save an agent record for the donor or just use an existing one
+     *
+     * @param donorName
+     * @param accession
+     * @param accessionTitle
+     * @return
+     */
+    private String getDonorURI(String donorName, JSONObject accession, String accessionTitle) throws Exception {
+        String uri = null;
+
+        if(nameURIMap.containsKey(donorName)) {
+            uri = nameURIMap.get(donorName);
+        } else {
+            JSONObject agentJS = mapper.convertAccessionDonor(accession);
+
+            if (agentJS != null) {
+                String id = saveRecord(ASpaceClient.AGENT_PEOPLE_ENDPOINT, agentJS.toString(), "Donor_Person->" + donorName);
+
+                if (!id.equalsIgnoreCase(NO_ID)) {
+                    uri = ASpaceClient.AGENT_PEOPLE_ENDPOINT + "/" + id;
+                    nameURIMap.put(donorName, uri);
+                    print("Copied Donor: " + donorName + " :: " + id);
+                } else {
+                    print("Failed -- Donor: " + donorName);
+                }
+            }
+        }
+
+        return uri;
     }
 
     /**
@@ -1999,9 +2077,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
      */
     private synchronized String getClassificationURI(String key) {
         if (classificationURIMap.containsKey(key)) {
+            linkedClassificationSet.add(key);
             return classificationURIMap.get(key);
         } else if (classificationTermURIMap.containsKey(key)) {
-            return classificationTermURIMap.get(key);
+            String sa[] = classificationTermURIMap.get(key).split(",");
+            linkedClassificationSet.add(sa[1]);
+            return sa[0];
         }else {
             return null;
         }
@@ -2192,12 +2273,37 @@ public class ASpaceCopyUtil implements  PrintConsole {
     public void cleanUp() {
         copying = false;
 
+        // remove any un-liked classifications
+        deleteUnlinkedClassifications();
+
         String totalRecordsCopied = getTotalRecordsCopiedMessage();
 
         print("\n\nFinish coping data ... Total time: " + stopWatch.getPrettyTime());
         print("\nNumber of Records copied: \n" + totalRecordsCopied);
 
         print("\nNumber of errors/warnings: " + saveErrorCount);
+    }
+
+    /**
+     * Method to delete all the unlinked classifications
+     */
+    public void deleteUnlinkedClassifications() {
+        for(String key: classificationURIMap.keySet()) {
+            if(!linkedClassificationSet.contains(key)) {
+                print("Deleting unlinked classification: " + key);
+                String uri = classificationURIMap.get(key);
+
+                if(!simulateRESTCalls) {
+                    try {
+                        aspaceClient.deleteRecord(uri);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            } else {
+                print("Linked classification: " + key);
+            }
+        }
     }
 
     /**
@@ -2513,7 +2619,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             aspaceCopyUtil.copyEnumRecords();
             aspaceCopyUtil.copyRepositoryRecords();
-
+            aspaceCopyUtil.mapRepositoryGroups();
+            aspaceCopyUtil.copyUserRecords();
             aspaceCopyUtil.copySubjectRecords();
             aspaceCopyUtil.copyCreatorRecords();
             aspaceCopyUtil.copyClassificationRecords();
@@ -2522,6 +2629,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             //aspaceCopyUtil.copyDigitalObjectRecords();
             //aspaceCopyUtil.copyResourceRecords(100000, 1);
+
+            aspaceCopyUtil.deleteUnlinkedClassifications();
 
             // print out the error messages
             System.out.println("\n\nSave Errors:\n" + aspaceCopyUtil.getSaveErrorMessages());

@@ -26,9 +26,6 @@ public class ASpaceMapper {
     // used to map vocabularies to ASpace vocabularies
     public String vocabularyURI = "/vocabularies/1";
 
-    // the script mapper script
-    private String mapperScript = null;
-
     // these store the ids of all accessions, resources, and digital objects loaded so we can
     // check for uniqueness before copying them to the ASpace backend
     private ArrayList<String> digitalObjectIDs = new ArrayList<String>();
@@ -37,7 +34,7 @@ public class ASpaceMapper {
     private ArrayList<String> eadIDs = new ArrayList<String>();
 
     // some code used for testing
-    private boolean makeUnique = true;
+    private boolean makeUnique = false;
 
     // initialize the random string generators for use when unique ids are needed
     private RandomString randomString = new RandomString(3);
@@ -255,7 +252,7 @@ public class ASpaceMapper {
      * @return
      * @throws Exception
      */
-    public String convertSubject(JSONObject record) throws Exception {
+    public JSONObject convertSubject(JSONObject record) throws Exception {
         // Main json object
         JSONObject json = new JSONObject();
 
@@ -268,10 +265,16 @@ public class ASpaceMapper {
 
         // add the terms
         JSONArray termsJA = new JSONArray();
-        addSubjectTerms(record, termsJA);
-        json.put("terms", termsJA);
+        try {
+            addSubjectTerms(record, termsJA);
+            json.put("terms", termsJA);
+        } catch(Exception e) {
+            String message = "Invalid subject terms for " + record + "\n";
+            aspaceCopyUtil.addErrorMessage(message);
+            return null;
+        }
 
-        return json.toString();
+        return json;
     }
 
     /**
@@ -305,7 +308,7 @@ public class ASpaceMapper {
          // Main json object
         JSONObject agentJS = new JSONObject();
 
-        // add the AT database Id as an external ID
+        // add the AR database Id as an external ID
         addExternalId(record, agentJS, "creator");
 
         agentJS.put("vocabulary", vocabularyURI);
@@ -372,6 +375,60 @@ public class ASpaceMapper {
     }
 
     /**
+     * Method to convert the donor information in an accession record to
+     * an agent
+     *
+     * @param record the accession record
+     * @return
+     * @throws Exception
+     */
+    public JSONObject convertAccessionDonor(JSONObject record) throws Exception {
+         // Main json object
+        JSONObject agentJS = new JSONObject();
+
+        // add the AR database Id as an external ID
+        addExternalId(record, agentJS, "donor");
+
+        agentJS.put("vocabulary", vocabularyURI);
+        agentJS.put("agent_type", "agent_person");
+        agentJS.put("publish", false);
+
+        // hold name information
+        JSONArray namesJA = new JSONArray();
+        JSONObject namesJS = new JSONObject();
+
+        // add the source for the name
+        namesJS.put("source", "local");
+
+        // add basic information to the names record
+        String sortName = record.getString("Donor");
+        namesJS.put("sort_name", sortName);
+        namesJS.put("name_order", "direct");
+
+        agentJS.put("agent_type", "agent_person");
+        namesJS.put("primary_name", sortName);
+
+        // add the names array and names json objects to main record
+        namesJA.put(namesJS);
+        agentJS.put("names", namesJA);
+
+        // add the contact information
+        if(record.has("DonorContactInformation")) {
+            JSONArray contactsJA = new JSONArray();
+            JSONObject contactsJS = new JSONObject();
+
+            contactsJS.put("name", sortName);
+            contactsJS.put("address_1", record.get("DonorContactInformation"));
+            contactsJS.put("note", record.get("DonorNotes"));
+
+            contactsJA.put(contactsJS);
+            agentJS.put("agent_contacts", contactsJA);
+        }
+
+        return agentJS;
+    }
+
+    /**
      * Method to convert the classification record
      *
      * @param record
@@ -407,7 +464,7 @@ public class ASpaceMapper {
         // Main json object
         JSONObject json = new JSONObject();
 
-        // add the AT database Id as an external ID
+        // add the AR database Id as an external ID
         addExternalId(record, json, "accession");
 
         json.put("publish", convertToBoolean(record.getInt("Enabled")));
@@ -415,7 +472,8 @@ public class ASpaceMapper {
         // check to make sure we have a title
         String title = fixEmptyString(record.getString("Title"), null);
 
-        String identifier = record.getString("Identifier");
+        String identifier = getUniqueID(ASpaceClient.ACCESSION_ENDPOINT, record.getString("Identifier"), null);
+
         if (makeUnique) {
             identifier = randomString.nextString();
         }
@@ -447,13 +505,14 @@ public class ASpaceMapper {
         /* add linked records (extents, dates, rights statement)*/
 
         // add the extent array containing one object or many depending if we using multiple extents
-        if(record.has("ReceivedExtent")) {
+        if(record.has("ReceivedExtent") && record.getDouble("ReceivedExtent") != 0) {
             JSONArray extentJA = new JSONArray();
             JSONObject extentJS = new JSONObject();
 
             extentJS.put("extent_type", enumUtil.getASpaceExtentType(record.getInt("ReceivedExtentUnitID")));
             extentJS.put("number", record.getString("ReceivedExtent"));
             extentJS.put("portion", "whole");
+            extentJS.put("container_summary", "Received Extent");
 
             extentJA.put(extentJS);
             json.put("extents", extentJA);
@@ -463,7 +522,7 @@ public class ASpaceMapper {
         addDate(record.getString("InclusiveDates"), json, "inclusive", "other");
 
         // add the collection management record now
-        if(record.has("ExpectedCompletionDate")) {
+        if(record.has("ExpectedCompletionDate") && !record.getString("ExpectedCompletionDate").isEmpty()) {
             addCollectionManagementRecord(record, json);
         }
 
@@ -1341,27 +1400,22 @@ public class ASpaceMapper {
 
             return id;
         } else if(endpoint.equals(ASpaceClient.ACCESSION_ENDPOINT)) {
-            String message = null;
+            String message;
 
             if(!accessionIDs.contains(id)) {
                 accessionIDs.add(id);
             } else {
-                String fullId = "";
+                String nid = id + " ##" + randomString.nextString();
 
-                do {
-                    idParts[0] += " ##" + randomString.nextString();
-                    fullId = concatIdParts(idParts);
-                } while(accessionIDs.contains(fullId));
+                accessionIDs.add(nid);
 
-                accessionIDs.add(fullId);
-
-                message = "Duplicate Accession Id: "  + id  + " Changed to: " + fullId + "\n";
+                message = "Duplicate Accession Id: "  + id  + " Changed to: " + nid + "\n";
                 aspaceCopyUtil.addErrorMessage(message);
+
+                id = nid;
             }
 
-            // we don't need to return the new id here, since the idParts array
-            // is being used to to store the new id
-            return "not used";
+            return id;
         } else if(endpoint.equals(ASpaceClient.RESOURCE_ENDPOINT)) {
             String message = null;
 

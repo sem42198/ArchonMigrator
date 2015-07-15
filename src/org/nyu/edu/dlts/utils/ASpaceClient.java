@@ -176,12 +176,12 @@ public class ASpaceClient {
      *
      * @param post
      * @param idName   used to specify what the name of the id is in json text
-     * @param atId     A quick way to identify the record that generated any errors
+     * @param arId     A quick way to identify the record that generated any errors
      * @param jsonText Only used to return with the error message if needed
      * @return The id or session
      * @throws Exception
      */
-    private String executePost(PostMethod post, String idName, String atId, String jsonText) throws Exception {
+    private String executePost(PostMethod post, String idName, String arId, String jsonText) throws Exception {
         String id = "";
 
         // Execute request
@@ -214,7 +214,7 @@ public class ASpaceClient {
                     response = responseJA.getJSONObject(responseJA.length() - 1);
 
                     errorBuffer.append("Endpoint: ").append(post.getURI()).append("\n").
-                            append("AR Identifier:").append(atId).append("\n").
+                            append("AR Identifier:").append(arId).append("\n").
                             append(statusMessage).append("\n\n").append(response.toString(2)).append("\n");
 
                     throw new Exception(response.toString(2));
@@ -229,7 +229,7 @@ public class ASpaceClient {
 
                 if (id == null || id.trim().isEmpty()) {
                     errorBuffer.append("Endpoint: ").append(post.getURI()).append("\n").
-                            append("AR Identifier:").append(atId).append("\n").
+                            append("AR Identifier: ").append(arId).append("\n").
                             append(statusMessage).append("\n\n").append(response.toString(2)).append("\n");
 
                     throw new Exception(response.toString(2));
@@ -252,8 +252,8 @@ public class ASpaceClient {
                 id = conflictingUri.substring(conflictingUri.lastIndexOf(" ") + 1);
 
                 errorBuffer.append("Endpoint: ").append(post.getURI()).append("\n").
-                        append("AR Identifier:").append(atId).append("\n").
-                        append("Re-using existing ASpace record:").append(conflictingUri).append("\n");
+                        append("AR Identifier: ").append(arId).append("\n").
+                        append("Re-using existing ASpace record: ").append(conflictingUri).append("\n\n");
             } else {
                 // if it a 500 error the ASpace then we may need to add the JSON text
                 if (statusCode == HttpStatus.SC_INTERNAL_SERVER_ERROR) {
@@ -267,7 +267,7 @@ public class ASpaceClient {
                 }
 
                 errorBuffer.append("Endpoint: ").append(post.getURI()).append("\n").
-                        append("AR Identifier:").append(atId).append("\n").
+                        append("AR Identifier:").append(arId).append("\n").
                         append(statusMessage).append("\n").append(responseBody).append("\n\n");
 
                 post.releaseConnection();
