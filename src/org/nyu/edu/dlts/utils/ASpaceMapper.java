@@ -239,7 +239,10 @@ public class ASpaceMapper {
 
         // get the full name
         String name = fixEmptyString(record.getString("DisplayName"), "full name not entered");
+
         json.put("name", name);
+        json.put("first_name", record.get("FirstName"));
+        json.put("last_name", record.get("LastName"));
         json.put("email", record.get("Email"));
 
         return json.toString();

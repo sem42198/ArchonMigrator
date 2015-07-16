@@ -49,6 +49,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
     // hashmap that stores the repository groups from the archive space database
     private HashMap<String, JSONObject> repositoryGroupURIMap = new HashMap<String, JSONObject>();
 
+    // store the repository names and Archon ID for debugging purposes
+    private ArrayList<String> repositoryNamesList = new ArrayList<String>();
+
     // hashmap that maps location from the old database with copy in new database
     private HashMap<String, String> locationURIMap = new HashMap<String, String>();
 
@@ -361,6 +364,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
             String shortName = repository.getString("Name");
             String repoID = repository.getString("ID");
 
+            repositoryNamesList.add(shortName + ", ID: " + repoID);
+
             if (!repositoryURIMap.containsKey(repoID)) {
                 String jsonText;
                 String id;
@@ -479,6 +484,11 @@ public class ASpaceCopyUtil implements  PrintConsole {
             // first get the group the user belongs too
             ArrayList<String> groupURIs = getUserGroupURIs(user);
 
+            if(groupURIs == null) {
+                print("Denied user: " + userName + ", not migrating ...");
+                continue;
+            }
+
             NameValuePair[] params = new NameValuePair[1 + groupURIs.size()];
             params[0] = new NameValuePair("password", resetPassword);
 
@@ -514,25 +524,48 @@ public class ASpaceCopyUtil implements  PrintConsole {
     public ArrayList<String> getUserGroupURIs(JSONObject user) throws Exception {
         ArrayList<String> groupURIs = new ArrayList<String>();
 
-        // get the repository uri
+        // get the repository URIs the user belong to
+        int repositoryLimit = user.getInt("RepositoryLimit");
         ArrayList<String> repoURIs = new ArrayList<String>();
-        JSONArray repoIDs = user.getJSONArray("Repositories");
-        for(int i = 0; i < repoIDs.length(); i++) {
-            String repoID = repoIDs.getString(i);
-            repoURIs.add(getRepositoryURI(repoID));
+
+        if(repositoryLimit == 1) {
+            JSONArray repoIDs = user.getJSONArray("Repositories");
+            for (int i = 0; i < repoIDs.length(); i++) {
+                String repoID = repoIDs.getString(i);
+                repoURIs.add(getRepositoryURI(repoID));
+            }
+        } else {
+            for(String repoURI: repositoryURIMap.values()) {
+                if (!repoURI.endsWith("/1")) {
+                    repoURIs.add(repoURI);
+                }
+            }
         }
 
         // construct the key base on access class
         String key = "";
         JSONObject groupJS;
 
-        // TODO get the correct access class here
-        int accessClass = 1;
+        // Get the correct access class by getting the lowest value user group number
+        int accessClass = 10;
 
-        if (accessClass == 1) {
+        JSONArray userGroupsJA = user.getJSONArray("Usergroups");
+        for(int i = 0; i < userGroupsJA.length(); i++) {
+            int userGroup = userGroupsJA.getInt(i);
+            if(userGroup < accessClass) {
+                accessClass = userGroup;
+            }
+        }
+
+        // first check that this user access class prevents them from being
+        if(accessClass == 5) {
+            return null;
+        } else if (accessClass == 1) {
             key = ASpaceClient.ADMIN_REPOSITORY_ENDPOINT + ASpaceMapper.ACCESS_CLASS_PREFIX + 1;
             groupJS = repositoryGroupURIMap.get(key);
-            groupURIs.add(groupJS.getString("uri"));
+            if (groupJS != null) {
+                groupURIs.add(groupJS.getString("uri"));
+            }
         } else {
             for (String repoURI : repoURIs) {
                 key = repoURI + ASpaceMapper.ACCESS_CLASS_PREFIX + accessClass;
@@ -661,7 +694,11 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 case 23:
                     // add any relationships if needed
                     if(creator.has("CreatorRelationships") && !creator.get("CreatorRelationships").equals(null)) {
-                        addCreatorRelationShips(records, creator, agentJS);
+                        try {
+                            addCreatorRelationShips(records, creator, agentJS);
+                        } catch(Exception e) {
+                            print("Invalid Relationship Record For: " + creator.getString("Name"));
+                        }
                     }
 
                     id = saveRecord(ASpaceClient.AGENT_PEOPLE_ENDPOINT, agentJS.toString(), "Creator_Person->" + creator.getString("Name"));
@@ -767,7 +804,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 // this is a family agent
                 subject.put("CreatorTypeID", 20);
             } else {
-                // must be a coporate agent
+                // must be a coorperate agent
                 subject.put("CreatorTypeID", 22);
             }
 
@@ -1061,7 +1098,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
             // create the batch import JSON array and dummy URI now
             JSONArray batchJA = new JSONArray();
 
-            String repoURI = getRepositoryURI("");
+            String repoURI = getRepositoryURI(defaultRepositoryId);
             String batchEndpoint = repoURI + ASpaceClient.BATCH_IMPORT_ENDPOINT;
             String digitalObjectURI = repoURI + ASpaceClient.DIGITAL_OBJECT_ENDPOINT + "/" + arId;
 
@@ -1073,10 +1110,10 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 batchJA.put(digitalObjectJS);
 
                 // add the subjects
-                //addSubjects(digitalObjectJS, digitalObject);
+                addSubjects(digitalObjectJS, digitalObject.getJSONArray("Subjects"), digitalObjectTitle);
 
                 // add the linked agents aka Names records
-                //addNames(digitalObjectJS, digitalObject);
+                addCreators(digitalObjectJS, digitalObject.getJSONArray("Creators"), digitalObjectTitle);
 
                 // add any archival objects here
                 JSONArray digitalObjectChildren = digitalObject.getJSONArray("components");
@@ -1097,12 +1134,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
                         digitalObjectChildJS.put("uri", digitalObjectChildURI);
                         digitalObjectChildJS.put("jsonmodel_type", "digital_object_component");
                         digitalObjectChildJS.put("digital_object", mapper.getReferenceObject(digitalObjectURI));
-
-                        // add the subjects now
-                        //addSubjects(digitalObjectChildJS, digitalObjectChild);
-
-                        // add the linked agents aka Names records
-                        //addNames(digitalObjectChildJS, digitalObjectChild);
 
                         batchJA.put(digitalObjectChildJS);
 
@@ -1188,6 +1219,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * Method to store the digital object in a hash map so it can be saved later
      *
      * @param batchJA
+     *
      * @param digitalObjectListKey
      */
     private void storeDigitalObject(JSONArray batchJA, String digitalObjectListKey) {
@@ -1206,10 +1238,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * Method to copy resource records from one database to the next
      *
      * @throws Exception
-     * @param max Used to specify the maximum amout of records that should be copied
-     * @param threads
+     * @param max Used to specify the maximum amount of records that should be copied
      */
-    public void copyResourceRecords(int max, int threads) throws Exception {
+    public void copyResourceRecords(int max) throws Exception {
         currentRecordType = "Resource Record";
 
         // first delete previously saved resource records if that option was selected by user
@@ -1309,10 +1340,18 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 String batchEndpoint = repoURI + ASpaceClient.BATCH_IMPORT_ENDPOINT;
 
                 // add the subjects
-                //addSubjects(resourceJS, resource);
+                addSubjects(resourceJS, resource.getJSONArray("Subjects"), resourceTitle);
 
                 // add the linked agents aka Names records
-                //addNames(resourceJS, resource);
+                addCreators(resourceJS, resource.getJSONArray("Creators"), resourceTitle);
+
+                // add any linked classifications
+                String classificationId = resource.getString("ClassificationID");
+                if(!classificationId.isEmpty() && !classificationId.equals("0")) {
+                    JSONArray classificationIds = new JSONArray();
+                    classificationIds.put(classificationId);
+                    addClassifications(repoURI, resourceJS, classificationIds, resourceTitle);
+                }
 
                 // add the instances
                 //addInstances(resourceJS, resource, repository, repoURI + "/");
@@ -1367,10 +1406,10 @@ public class ASpaceCopyUtil implements  PrintConsole {
                             }
 
                             // add the subjects now
-                            //addSubjects(componentJS, component);
+                            addSubjects(componentJS, component.getJSONArray("Subjects"), title);
 
                             // add the linked agents aka Names records
-                            //addNames(componentJS, component);
+                            addCreators(componentJS, component.getJSONArray("Creators"), title);
 
                             // add the instances
                             //addInstances(componentJS, component, repositoryID, repoURI + "/");
@@ -1420,25 +1459,19 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 // redo the sort order so we don't have any collisions and things are sorted correctly
                 redoComponentSortOrder(parentMap);
 
-                if (threads == 1) {
-                    String bids = saveRecord(batchEndpoint, batchJA.toString(2), arId);
-
-                    if (!bids.equals(NO_ID)) {
-                        if (!simulateRESTCalls) {
-                            JSONObject bidsJS = new JSONObject(bids);
-                            resourceURI = (new JSONArray(bidsJS.getString(resourceURI))).getString(0);
-                        }
-
-                        updateResourceURIMap(dbId, resourceURI);
-                        incrementCopyCount();
-
-                        print("Batch Copied Resource: " + resourceTitle + " :: " + resourceURI);
-                    } else {
-                        print("Batch Copy Fail -- Resource: " + resourceTitle);
+                String bids = saveRecord(batchEndpoint, batchJA.toString(2), arId);
+                if (!bids.equals(NO_ID)) {
+                    if (!simulateRESTCalls) {
+                        JSONObject bidsJS = new JSONObject(bids);
+                        resourceURI = (new JSONArray(bidsJS.getString(resourceURI))).getString(0);
                     }
+
+                    updateResourceURIMap(dbId, resourceURI);
+                    incrementCopyCount();
+
+                    print("Batch Copied Resource: " + resourceTitle + " :: " + resourceURI);
                 } else {
-                    // copy this in a separate thread
-                    copyResourceRecordInThread(batchEndpoint, resourceURI, resourceTitle, batchJA.toString(2), arId, dbId, threads);
+                    print("Batch Copy Fail -- Resource: " + resourceTitle);
                 }
             } else {
                 print("Fail -- Resource to JSON: " + resourceTitle);
@@ -1492,100 +1525,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
             if (instancesJA.length() != 0) {
                 json.put("instances", instancesJA);
             }
-        }
-    }
-
-    /**
-     * Method to copy resource records in a different thread
-     * in order to increase performance?
-     *
-     * @throws Exception
-     * @param endpoint
-     * @param jsonText
-     * @param arId
-     * @param dbId
-     */
-    public void copyResourceRecordInThread(final String endpoint, final String tempResourceURI,
-                                           final String resourceTitle, final String jsonText,
-                                           final String arId, final String dbId, int maxClients) throws Exception {
-
-        // start the controller thread that goe through list of records
-        Thread performer = new Thread(new Runnable() {
-            public void run() {
-                ASpaceClient asc = aspaceClient.getAuthenticatedClient();
-                int clientNumber = getTotalASpaceClients();
-
-                String bids = "";
-                try {
-                    print("Route: " + endpoint + "\nBatch Record Length: " + jsonText.length() + " bytes");
-
-                    if(simulateRESTCalls) {
-                        bids = "/repositories/2/resource/10001";
-                        Thread.sleep(2);
-                    } else {
-                        bids = asc.post(endpoint, jsonText, null, arId);
-                    }
-                } catch (Exception e) {
-                    print("Error saving batch import record: " + arId);
-
-                    // get the error message and add it to the parent aspace client object
-                    aspaceClient.appendToErrorBuffer(asc.getErrorMessages());
-
-                    incrementErrorCount();
-                    incrementASpaceErrorCount();
-                }
-
-                if(!bids.equals(NO_ID)) {
-                    try {
-                        String resourceURI;
-
-                        if(simulateRESTCalls) {
-                            resourceURI = bids;
-                        } else {
-                            JSONObject bidsJS = new JSONObject(bids);
-                            resourceURI = (new JSONArray(bidsJS.getString(tempResourceURI))).getString(0);
-                        }
-
-                        updateResourceURIMap(dbId, resourceURI);
-                        incrementCopyCount();
-
-                        print("Thread Client # " + clientNumber + " -- Batch Copied Resource: " + resourceTitle + " :: " + resourceURI);
-                    } catch(Exception e) {
-                        System.out.println("Batch IDS JSON Object: "  + bids);
-                        e.printStackTrace();
-                    }
-                } else {
-                    print("Thread Client # " + clientNumber + " -- Batch Copy Fail -- Resource: " + resourceTitle);
-                }
-
-                // reduce the number of clients and set
-                decrementTotalASpaceClients();
-            }
-        });
-
-        // wait for the client count to be less than max before trying to copy
-        int timeCount = 0;
-        try {
-            while (totalASpaceClients >= maxClients && !stopCopy) {
-                timeCount++;
-
-                if(timeCount <= 10) {
-                    print("Waiting on response from backend to copy: " + arId + "\n");
-                } else {
-                    // if waiting more than ten minuets then inform user to
-                    // check ASpace backend
-                    print("Waiting over 10 minutes for response from backend to copy: " + arId + "\n");
-                    print("Make sure the backend has not crashed ...\n");
-                }
-
-                Thread.sleep(60000); // wait 60 seconds before checking again
-            }
-
-            // start the thread now
-            incrementTotalASpaceClients();
-            performer.start();
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
 
@@ -1702,7 +1641,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         if (nameURI != null) {
             json.put("creator", mapper.getReferenceObject(nameURI));
-        } else if (!creatorID.isEmpty()) {
+        } else if (!creatorID.isEmpty() && !creatorID.equals("0")) {
             print("No mapped creator found ...");
         }
     }
@@ -2307,6 +2246,17 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
+     * A method to display the short names and id of repositories. Useful when debugging
+     */
+    public void displayRepositories() {
+        print("\n\nRepository Names: ");
+
+        for(String repo: repositoryNamesList) {
+            print(repo);
+        }
+    }
+
+    /**
      * Method to return the current status of the migration
      *
      * @return
@@ -2402,7 +2352,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
     /**
      * Method to return the keys in inverted order. Used to correctly assign creator
-     * relationships, otherwise a relationship is created to an agent that not yet created
+     * relationships, otherwise a relationship is created to an agent that's not yet created
      *
      * @param records
      * @return
@@ -2598,17 +2548,21 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param args
      */
     public static void main(String[] args) throws JSONException {
-        //String host = "http://archives-dev.library.illinois.edu/archondev/uiuc";
-        //ArchonClient archonClient = new ArchonClient(host, "aspace", "We$tbr0ok");
-        String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
+        String host = "http://archives-dev.library.illinois.edu/archondev/uiuctest";
+        ArchonClient archonClient = new ArchonClient(host, "aspace", "We$tbr0ok");
+
+        //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
+        //String host = "http://archives-dev.library.illinois.edu/archondev/houston";
         //String host = "http://localhost/~nathan/archon";
-        ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
+        //ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
+
         archonClient.getSession();
 
         ASpaceCopyUtil aspaceCopyUtil  = new ASpaceCopyUtil(archonClient, "http://54.227.35.51:8089", "admin", "admin");
         aspaceCopyUtil.getSession();
         aspaceCopyUtil.setSimulateRESTCalls(false);
         aspaceCopyUtil.setDefaultRepositoryId("1");
+
         try {
             /*ArrayList<String> recordList = new ArrayList<String>();
             recordList.add("4719");
@@ -2620,16 +2574,19 @@ public class ASpaceCopyUtil implements  PrintConsole {
             aspaceCopyUtil.copyEnumRecords();
             aspaceCopyUtil.copyRepositoryRecords();
             aspaceCopyUtil.mapRepositoryGroups();
+
+            // display the repository
+            aspaceCopyUtil.displayRepositories();
+
             aspaceCopyUtil.copyUserRecords();
             aspaceCopyUtil.copySubjectRecords();
             aspaceCopyUtil.copyCreatorRecords();
             aspaceCopyUtil.copyClassificationRecords();
             aspaceCopyUtil.copyAccessionRecords();
+            aspaceCopyUtil.copyDigitalObjectRecords();
+            aspaceCopyUtil.copyResourceRecords(100000);
 
-
-            //aspaceCopyUtil.copyDigitalObjectRecords();
-            //aspaceCopyUtil.copyResourceRecords(100000, 1);
-
+            // removed all unused classifications
             aspaceCopyUtil.deleteUnlinkedClassifications();
 
             // print out the error messages
