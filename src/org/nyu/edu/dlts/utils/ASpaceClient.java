@@ -43,7 +43,7 @@ public class ASpaceClient {
     public static final String AGENT_PEOPLE_ENDPOINT = "/agents/people";
     public static final String AGENT_SOFTWARE_ENDPOINT = "/agents/software";
     public static final String ENUM_ENDPOINT = "/config/enumerations";
-    public static final String BATCH_IMPORT_ENDPOINT = "/batch_imports";
+    public static final String BATCH_IMPORT_ENDPOINT = "/batch_imports?migration=ArchivistToolkit";
 
     private HttpClient httpclient = new HttpClient();
     private String host = "";

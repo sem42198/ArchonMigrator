@@ -74,6 +74,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
     // hashmap that maps accessions from old database with copy in new database
     private HashMap<String, String> accessionURIMap = new HashMap<String, String>();
 
+    // a hash map to store the Repository for a particular accession
+    private HashMap<String, String> accessionRepositoryIdMap = new HashMap<String, String>();
+
     // hashmap that maps digital objects from old database with copy in new database
     private HashMap<String, String> digitalObjectURIMap = new HashMap<String, String>();
 
@@ -180,10 +183,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
     private JSONObject cachedResourcesJS;
 
-    // booleans used to convert some bbcode to html or blanks
-    private boolean bbcodeToHTML = false;
-    private boolean bbcodeToBlank = true;
-
     // the default repository id
     private String defaultRepositoryId;
 
@@ -275,13 +274,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param option
      */
     public void setBBCodeOption(String option) {
-        if(option.equals("-bbcode_html")) {
-            bbcodeToHTML = true;
-            bbcodeToBlank = false;
-        } else {
-            bbcodeToHTML = false;
-            bbcodeToBlank = true;
-        }
+        mapper.setBBCodeOption(option);
     }
 
     /**
@@ -976,6 +969,71 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
+     * Method to set the accession records repository based on any linked
+     * resources. Beacuse this loads both collection and accession records it take
+     * a while
+     *
+     * @throws Exception
+     */
+    public void findAccessionRecordRepositories() throws Exception {
+        print("Finding Accession records repository ...");
+
+        // update the progress so that the title changes
+        updateProgress("Accession Repositories", 0, 0);
+
+        JSONObject accessions = archonClient.getAccessionRecords();
+
+        // these are used to update the progress bar
+        int total = accessions.length();
+        int count = 0;
+
+        // check to see if we have any accessions before spending the time to load
+        // any collections
+        if(total == 0) {
+            print("No accessions found ...");
+            return;
+        }
+
+        // load the collections
+        JSONObject collections = archonClient.getCollectionRecords();
+
+        Iterator<String> keys = accessions.keys();
+        while (keys.hasNext()) {
+            if (stopCopy) return;
+
+            String key = keys.next();
+
+            JSONObject accession = accessions.getJSONObject(key);
+
+            String arId = accession.getString("ID");
+            String accessionTitle = accession.getString("Title");
+            String repoID = defaultRepositoryId;
+
+            // get the linked collections and set the repository to the first one
+            try {
+                JSONArray linkedCollections = accession.getJSONArray("Collections");
+
+                if(linkedCollections.length() != 0 && linkedCollections.getInt(0) != 0) {
+                    JSONObject collection = collections.getJSONObject(linkedCollections.getString(0));
+                    repoID = collection.getString("RepositoryID");
+                }
+            } catch(Exception e) {
+                print("Error assigning repository ID for: " + accessionTitle + " :: " + arId);
+            }
+
+            accessionRepositoryIdMap.put(arId, repoID);
+
+            print("Accession: " + accessionTitle + " :: " + arId + " / Repository ID: " + repoID);
+
+            count++;
+            updateProgress("Accession Repositories", total, count);
+        }
+
+        // refresh the database connection to prevent heap space error
+        freeMemory();
+    }
+
+    /**
      * Method to copy accession records
      *
      * @throws Exception
@@ -1538,7 +1596,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @return
      */
     private int getParentId(JSONObject resourceComponents, JSONObject componentJS, Integer parentId) throws Exception {
-        while (parentId != 0) {
+        while (parentId != 0 && resourceComponents.has(parentId.toString())) {
             JSONObject parent = resourceComponents.getJSONObject(parentId.toString());
 
             if(parent.getInt("ContentType") == 2) {
@@ -2518,21 +2576,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
-     * A Method to remove bbcode from the title of Archival Objects
-     *
-     * @param title
-     */
-    private String cleanTitle(String title) {
-        if(bbcodeToHTML) {
-            title = title.replace("[i]", "<i>").replace("[/i]", "</i>");
-        } else if(bbcodeToBlank) {
-            title = title.replace("[i]", "").replace("[/i]", "");
-        }
-
-        return title;
-    }
-
-    /**
      * Method to extract the id from a given URI
      * @param uri
      * @return
@@ -2560,8 +2603,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         ASpaceCopyUtil aspaceCopyUtil  = new ASpaceCopyUtil(archonClient, "http://54.227.35.51:8089", "admin", "admin");
         aspaceCopyUtil.getSession();
-        aspaceCopyUtil.setSimulateRESTCalls(false);
+        aspaceCopyUtil.setSimulateRESTCalls(true);
         aspaceCopyUtil.setDefaultRepositoryId("1");
+        aspaceCopyUtil.setBBCodeOption("-bbcode_html");
 
         try {
             /*ArrayList<String> recordList = new ArrayList<String>();
@@ -2575,13 +2619,14 @@ public class ASpaceCopyUtil implements  PrintConsole {
             aspaceCopyUtil.copyRepositoryRecords();
             aspaceCopyUtil.mapRepositoryGroups();
 
-            // display the repository
+            // some test code to locate the repositories and
             aspaceCopyUtil.displayRepositories();
 
             aspaceCopyUtil.copyUserRecords();
             aspaceCopyUtil.copySubjectRecords();
             aspaceCopyUtil.copyCreatorRecords();
             aspaceCopyUtil.copyClassificationRecords();
+            //aspaceCopyUtil.findAccessionRecordRepositories();
             aspaceCopyUtil.copyAccessionRecords();
             aspaceCopyUtil.copyDigitalObjectRecords();
             aspaceCopyUtil.copyResourceRecords(100000);

@@ -49,6 +49,10 @@ public class ASpaceMapper {
     // date formatter used to convert date string to date object
     SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMdd");
 
+        // booleans used to convert some bbcode to html or blanks
+    private boolean bbcodeToHTML = false;
+    private boolean bbcodeToBlank = true;
+
     /**
      *  Main constructor
      */
@@ -60,6 +64,21 @@ public class ASpaceMapper {
      */
     public ASpaceMapper(ASpaceCopyUtil aspaceCopyUtil) {
         this.aspaceCopyUtil = aspaceCopyUtil;
+    }
+
+    /**
+     * Set the option for either converting some bbcode to html
+     *
+     * @param option
+     */
+    public void setBBCodeOption(String option) {
+        if (option.equals("-bbcode_html")) {
+            bbcodeToHTML = true;
+            bbcodeToBlank = false;
+        } else {
+            bbcodeToHTML = false;
+            bbcodeToBlank = true;
+        }
     }
 
     /**
@@ -748,7 +767,8 @@ public class ASpaceMapper {
         /* Add fields needed for abstract_archival_object.rb */
 
         // check to make sure we have a title
-        String title = fixEmptyString(record.getString("Title"));
+        String title = cleanTitle(fixEmptyString(record.getString("Title")));
+
         json.put("title", title);
 
         // add the language code
@@ -773,6 +793,9 @@ public class ASpaceMapper {
         if(id_0.isEmpty()) {
             id_0 = record.getString("ClassificationID");
         }
+
+        // now make sure we don't already have this ID
+        id_0 = getUniqueID(ASpaceClient.RESOURCE_ENDPOINT, id_0, null);
 
         String id_1 = "";
         String id_2 = "";
@@ -934,6 +957,21 @@ public class ASpaceMapper {
             dateJA.put(dateJS);
         }
 
+        // it is still possible to get to this point without any dates so just hard a dummy
+        // date so that the record can be saved.
+        if(dateJA.length() == 0) {
+            dateJS = new JSONObject();
+
+            dateJS.put("date_type", "single");
+
+            dateJS.put("label", "other");
+
+            dateExpression = "Dummy Date";
+            dateJS.put("expression", dateExpression);
+
+            dateJA.put(dateJS);
+        }
+
         json.put("dates", dateJA);
     }
 
@@ -953,7 +991,7 @@ public class ASpaceMapper {
         /* Add fields needed for abstract_archival_object.rb */
 
         // check to make sure we have a title
-        String title = record.getString("Title");
+        String title = cleanTitle(record.getString("Title"));
         json.put("title", title);
 
         boolean dateAdded = addDate(record.getString("Date"), json, null, "created");
@@ -1420,27 +1458,22 @@ public class ASpaceMapper {
 
             return id;
         } else if(endpoint.equals(ASpaceClient.RESOURCE_ENDPOINT)) {
-            String message = null;
+            String message;
 
             if(!resourceIDs.contains(id)) {
                 resourceIDs.add(id);
             } else {
-                String fullId = "";
+                String nid = id + " ##" + randomString.nextString();
 
-                do {
-                    idParts[0] += " ##" + randomString.nextString();
-                    fullId = concatIdParts(idParts);
-                } while(resourceIDs.contains(fullId));
+                resourceIDs.add(nid);
 
-                resourceIDs.add(fullId);
-
-                message = "Duplicate Resource Id: "  + id  + " Changed to: " + fullId + "\n";
+                message = "Duplicate Resource Id: "  + id  + " Changed to: " + nid + "\n";
                 aspaceCopyUtil.addErrorMessage(message);
+
+                id= nid;
             }
 
-            // we don't need to return the new id here, since the idParts array
-            // is being used to to store the new id
-            return "not used";
+            return id;
         } else if(endpoint.equals("ead")) {
             if(id.isEmpty()) {
                 return "";
@@ -1498,6 +1531,23 @@ public class ASpaceMapper {
      */
     public void setCurrentResourceRecordIdentifier(String identifier) {
         this.currentResourceRecordIdentifier = identifier;
+    }
+
+    /**
+     * A Method to remove bbcode from the title of Archival Objects
+     *
+     * @param title
+     */
+    private String cleanTitle(String title) {
+        if (bbcodeToHTML) {
+            title = title.replace("[i]", "<i>").replace("[/i]", "</i>");
+            title = title.replace("[b]", "<b>").replace("[/b]", "</b>");
+        } else if (bbcodeToBlank) {
+            title = title.replace("[i]", "").replace("[/i]", "");
+            title = title.replace("[b]", "").replace("[/b]", "");
+        }
+
+        return title;
     }
 
     /**
