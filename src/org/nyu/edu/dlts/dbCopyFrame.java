@@ -600,7 +600,7 @@ public class dbCopyFrame extends JFrame {
                         "luther",
                         "miami",
                         "nwu",
-                        "uiuc",
+                        "uiuctest",
                         "ihlc",
                         "ala",
                         "rbml"

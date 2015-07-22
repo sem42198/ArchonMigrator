@@ -439,7 +439,7 @@
                  <string>nwu</string>
                 </void>
                 <void method="addElement">
-                 <string>uiuc</string>
+                 <string>uiuctest</string>
                 </void>
                 <void method="addElement">
                  <string>ihlc</string>

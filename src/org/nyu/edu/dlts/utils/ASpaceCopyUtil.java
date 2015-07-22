@@ -2725,7 +2725,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
         // set any specific records to copy
         ArrayList<String> resourcesIDsList = new ArrayList<String>();
         resourcesIDsList.add("27-3");
-        //resourcesIDsList.add("MSS 332");
         //aspaceCopyUtil.setResourcesToCopyList(resourcesIDsList);
 
         try {
