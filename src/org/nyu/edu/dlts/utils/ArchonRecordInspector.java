@@ -118,10 +118,38 @@ public class ArchonRecordInspector {
      * Method to
      */
     public static void loadAccessions() {
-        JSONObject repositoryRecordsJS = archonClient.getRepositoryRecords();
-
         JSONObject accessionRecordsJS = archonClient.getAccessionRecords();
         System.out.println("Number of Accessions: " + accessionRecordsJS.length());
+    }
+
+    /**
+     * Method to load a particular collection record
+     * @param searchFor
+     */
+    public static void loadCollection(String searchFor) {
+        JSONObject collectionRecordsJS = archonClient.getCollectionRecords();
+
+        Iterator<String> keys = collectionRecordsJS.keys();
+        while(keys.hasNext()) {
+            String key = keys.next();
+            System.out.println("Processing collection " + key);
+
+            try {
+                JSONObject recordJS = collectionRecordsJS.getJSONObject(key);
+                String identifier = recordJS.getString("CollectionIdentifier");
+
+                if (identifier.equalsIgnoreCase(searchFor)) {
+                    System.out.println("Found Record " + recordJS.get("Title"));
+
+                    // get the collection content
+                    JSONObject collectionContentsJS = archonClient.getCollectionContentRecords(key);
+
+                    break;
+                }
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     /**
@@ -134,10 +162,10 @@ public class ArchonRecordInspector {
         parentDirectory = new File("/Users/nathan/temp");
 
         //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
-        //String host = "http://quanta2.bobst.nyu.edu/~nathan/archon";
+        String host = "http://quanta2.bobst.nyu.edu/~nathan/archon";
         //archonClient = new ArchonClient(host, "admin", "admin");
         //String host = "http://archivestest.unco.edu/archon";
-        String host = "http://localhost/~nathan/archon";
+        //String host = "http://localhost/~nathan/archon";
         //archonClient = new ArchonClient(host, "MigAdmin", "111zwSHOO");
         //String host = "http://128.122.90.55:9000/~nathan/archon";
 
@@ -147,7 +175,10 @@ public class ArchonRecordInspector {
         System.out.println("Connected to " + host + "\n\n");
 
         // load the accessions records
-        loadAccessions();
+        //loadAccessions();
+
+        // load the collection record
+        loadCollection("27-3");
 
         // load the content record
         //loadCollectionContent("259");

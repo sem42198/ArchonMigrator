@@ -494,16 +494,17 @@ public class ASpaceMapper {
         // check to make sure we have a title
         String title = fixEmptyString(record.getString("Title"), null);
 
-        String identifier = getUniqueID(ASpaceClient.ACCESSION_ENDPOINT, record.getString("Identifier"), null);
+        String id_0 = record.getString("Identifier");
+        String id_1 = getUniqueID(ASpaceClient.ACCESSION_ENDPOINT, id_0, null);
 
         if (makeUnique) {
-            identifier = randomString.nextString();
+            id_0 = randomStringLong.nextString();
         }
 
         Date date = getDate(record.getString("AccessionDate"));
 
         if (date == null) {
-            String message = "Invalid Accession Date for" + identifier + "\n";
+            String message = "Invalid Accession Date for" + id_0 + "\n";
             aspaceCopyUtil.addErrorMessage(message);
             return null;
         }
@@ -512,7 +513,8 @@ public class ASpaceMapper {
 
         json.put("accession_date", date);
 
-        json.put("id_0", identifier);
+        json.put("id_0", id_0);
+        json.put("id_1", id_1); // This is only used to make sure the ids are unique
 
         json.put("content_description", record.get("ScopeContent"));
 
@@ -790,27 +792,20 @@ public class ASpaceMapper {
 
         // get the ids and make them unique if we in DEBUG mode
         String id_0 = record.getString("CollectionIdentifier");
+
         if(id_0.isEmpty()) {
             id_0 = record.getString("ClassificationID");
         }
 
         // now make sure we don't already have this ID
-        id_0 = getUniqueID(ASpaceClient.RESOURCE_ENDPOINT, id_0, null);
-
-        String id_1 = "";
-        String id_2 = "";
-        String id_3 = "";
+        String id_1 = getUniqueID(ASpaceClient.RESOURCE_ENDPOINT, id_0, null);
 
         if(makeUnique) {
-            id_1 = randomString.nextString();
-            id_2 = randomString.nextString();
-            id_3 = randomString.nextString();
+            id_0 = randomStringLong.nextString();
         }
 
         json.put("id_0", id_0);
         json.put("id_1", id_1);
-        json.put("id_2", id_2);
-        json.put("id_3", id_3);
 
         // get the level
         json.put("level", "collection");
@@ -1445,32 +1440,40 @@ public class ASpaceMapper {
 
             if(!accessionIDs.contains(id)) {
                 accessionIDs.add(id);
+                return "";
             } else {
-                String nid = id + " ##" + randomString.nextString();
+                String nid;
+
+                do {
+                    nid = "##" + randomStringLong.nextString();
+                } while (accessionIDs.contains(nid));
 
                 accessionIDs.add(nid);
 
-                message = "Duplicate Accession Id: "  + id  + " Changed to: " + nid + "\n";
+                message = "Duplicate Accession Id: "  + id  + " Added: " + nid + "\n";
                 aspaceCopyUtil.addErrorMessage(message);
 
-                id = nid;
+                return nid;
             }
-
-            return id;
         } else if(endpoint.equals(ASpaceClient.RESOURCE_ENDPOINT)) {
             String message;
 
             if(!resourceIDs.contains(id)) {
                 resourceIDs.add(id);
+                return "";
             } else {
-                String nid = id + " ##" + randomString.nextString();
+                String nid;
+
+                do {
+                    nid = "##" + randomStringLong.nextString();
+                } while (resourceIDs.contains(nid));
 
                 resourceIDs.add(nid);
 
-                message = "Duplicate Resource Id: "  + id  + " Changed to: " + nid + "\n";
+                message = "Duplicate Resource Id: "  + id  + " Added: " + nid + "\n";
                 aspaceCopyUtil.addErrorMessage(message);
 
-                id= nid;
+                id = nid;
             }
 
             return id;

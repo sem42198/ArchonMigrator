@@ -77,6 +77,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
     // a hash map to store the Repository for a particular accession
     private HashMap<String, String> accessionRepositoryIdMap = new HashMap<String, String>();
 
+    private HashMap<String, ArrayList<String>> resourcesToAccessionsMap = new HashMap<String, ArrayList<String>>();
+
     // hashmap that maps digital objects from old database with copy in new database
     private HashMap<String, String> digitalObjectURIMap = new HashMap<String, String>();
 
@@ -177,7 +179,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
     private int maxDepth = 0;
 
     private int batchLengthMin = 0;
-    private int batchLengthMax = 100000;
+    private int batchLengthMax = 1000000;
 
     private File recordDumpDirectory = null;
 
@@ -289,6 +291,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * Method to copy the archon enum records
      */
     public void copyEnumRecords() throws Exception {
+        if(simulateRESTCalls) return;
+
         HashMap<String, JSONObject> dynamicEnums = aspaceClient.loadDynamicEnums();
 
         if(dynamicEnums == null) {
@@ -343,6 +347,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         JSONObject records = archonClient.getRepositoryRecords();
 
+        // A hashmap to map the short name to the repository URI to prevent duplications
+        HashMap<String, String> shortNamesToURIMap = new HashMap<String, String>();
+
         // these are used to update the progress bar
         int total = records.length();
         int count = 0;
@@ -359,7 +366,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             repositoryNamesList.add(shortName + ", ID: " + repoID);
 
-            if (!repositoryURIMap.containsKey(repoID)) {
+            if (!shortNamesToURIMap.containsKey(shortName)) {
                 String jsonText;
                 String id;
 
@@ -379,6 +386,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                     String uri = ASpaceClient.REPOSITORY_ENDPOINT + "/" + id;
                     repositoryURIMap.put(repoID, uri);
                     repositoryAgentURIMap.put(uri, agentURI);
+                    shortNamesToURIMap.put(shortName, uri);
 
                     print("Copied Repository: " + shortName + " :: " + id);
                     success++;
@@ -386,6 +394,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
                     print("Fail -- Repository: " + shortName);
                 }
             } else {
+                repositoryURIMap.put(repoID, shortNamesToURIMap.get(shortName));
+
                 print("Repository already in database " + shortName);
                 success++;
             }
@@ -403,6 +413,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * then place them in a hashmap
      */
     public void mapRepositoryGroups() {
+        if(simulateRESTCalls) return;
+
         print("Mapping repository user group records ...");
 
         // update the progress bar to indicate loading of records
@@ -1098,6 +1110,25 @@ public class ASpaceCopyUtil implements  PrintConsole {
                     // now add the event objects
                     //addEvents(accession, repoURI, uri);
 
+                    // now map the ids of any collections linked to this accession record
+                    // so a linked can be created when copying the resource records
+                    if(accession.has("Collections")) {
+                        JSONArray collectionIds = accession.getJSONArray("Collections");
+                        for(int i = 0; i < collectionIds.length(); i++) {
+                            String cid = collectionIds.getString(i);
+
+                            ArrayList<String> collectionsList;
+                            if(resourcesToAccessionsMap.containsKey(cid)) {
+                                collectionsList = resourcesToAccessionsMap.get(cid);
+                            } else {
+                                collectionsList = new ArrayList<String>();
+                                resourcesToAccessionsMap.put(cid, collectionsList);
+                            }
+
+                            collectionsList.add(uri);
+                        }
+                    }
+
                     accessionURIMap.put(arId, uri);
                     print("Copied Accession: " + accessionTitle + " :: " + id);
                     success++;
@@ -1366,7 +1397,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
             mapper.setCurrentResourceRecordIdentifier(arId);
 
             // check to see if we are not just copy a single resource
-            if(resourcesIDsList != null && !resourcesIDsList.contains(dbId)) {
+            if(resourcesIDsList != null && !resourcesIDsList.contains(arId)) {
                 print("Not Copied: Resource not in list: " + resourceTitle);
                 continue;
             }
@@ -1416,7 +1447,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 addDigitalInstances(resourceJS, "collection_" + dbId, resourceTitle, batchEndpoint);
 
                 // add the linked accessions
-                //addRelatedAccessions(resourceJS, resource, repoURI + "/");
+                addRelatedAccessions(resourceJS, dbId, arId, repoURI + "/");
 
                 // if we using batch import then we not not going to
                 resourceJS.put("uri", endpoint + "/" + dbId);
@@ -1477,6 +1508,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                             // save this json record now to get the URI
                             componentJS.put("uri", aoEndpoint + "/" + cid);
                             componentJS.put("jsonmodel_type", "archival_object");
+
                             batchJA.put(componentJS);
 
                             print("Copied Resource Component: " + title + " :: " + cid + "\n");
@@ -1490,7 +1522,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                 freeMemory();
 
-                print("Batch Copying Resource # " + count + " || Title: " + resourceTitle + "\nMax Depth: " + maxDepth);
+                print("Batch Copying Resource # " + count + " || Title: " + resourceTitle);
 
                 /* DEBUG CODE */
                 int batchLength = batchJA.length();
@@ -1508,14 +1540,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
                     }
                 }
 
-                /* get a new session to save memory on aspace side
-                if(batchLength > 1) {
-                    aspaceClient.getSession();
-                }*/
                 /* END DEBUG */
 
                 // redo the sort order so we don't have any collisions and things are sorted correctly
-                redoComponentSortOrder(parentMap);
+                if(!redoComponentSortOrder(parentMap)) {
+                    String message = "Invalid Parent/Child Relationship: "  + resourceTitle  + " :: " + arId + "\n";
+                    addErrorMessage(message);
+                }
 
                 String bids = saveRecord(batchEndpoint, batchJA.toString(2), arId);
                 if (!bids.equals(NO_ID)) {
@@ -1587,6 +1618,33 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
+         * Method to add a related accessions to a resource record
+         *
+         * @param json The ASpace resource record
+         */
+        private synchronized void addRelatedAccessions(JSONObject json, String dbId, String arId, String recordRepoURI) throws Exception {
+            String message;
+            JSONArray accessionsJA = new JSONArray();
+
+            if(resourcesToAccessionsMap.containsKey(dbId)) {
+                for(String accessionURI: resourcesToAccessionsMap.get(dbId)) {
+                    if (accessionURI.contains(recordRepoURI)) {
+                        accessionsJA.put(mapper.getReferenceObject(accessionURI));
+                        if (debug) print("Added Accession to Resource: " + arId);
+                    } else {
+                        message = "Repository Mismatch Between Resource -- Accession: " +
+                                arId + " [ " + recordRepoURI + " ] / [ " + accessionURI + " ]\n";
+                        addErrorMessage(message);
+                    }
+                }
+            }
+
+            if (accessionsJA.length() != 0) {
+                json.put("related_accessions", accessionsJA);
+            }
+        }
+
+    /**
      * Method to return the parent id. This is needed in case we have a parent that a type 2 so we actually
      * need to get the grandparent, or even older is this case
      *
@@ -1638,9 +1696,15 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
-     * Method to redo the sort order for the components
+     * Method to redo the sort order for the components, and at the same time check to see if the
+     * parent child relationships are valid
      */
-    private void redoComponentSortOrder(HashMap<String, JSONObject> parentMap) throws Exception {
+    private boolean redoComponentSortOrder(HashMap<String, JSONObject> parentMap) throws Exception {
+        // this collections are used to find invalid parent child relations which would cause the
+        // the record to fail to save due to infinite loop situation
+        ArrayList topLevelParentList = new ArrayList();
+        HashMap<String, JSONObject> childrenMap = new HashMap<String, JSONObject>();
+
         for(String key: parentMap.keySet()) {
             JSONObject childrenJS = parentMap.get(key);
 
@@ -1652,8 +1716,59 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 JSONObject componentJS = childrenJS.getJSONObject(keys.next());
                 componentJS.put("position", i);
                 i++;
+
+                String id = getIdFromURI(componentJS.getString("uri"));
+                if(key.equals("parent_0")) {
+                    topLevelParentList.add(id);
+                } else {
+                    childrenMap.put(id, componentJS);
+                }
             }
         }
+
+        // let verify if we have parent
+        return verifyChildParentRelationship(topLevelParentList, childrenMap);
+    }
+
+    /**
+     * Method to verify that a child record can actually
+     *
+     * @param topLevelParentList
+     * @param childrenMap
+     */
+    private boolean verifyChildParentRelationship(ArrayList topLevelParentList, HashMap<String, JSONObject> childrenMap) throws JSONException {
+        ArrayList<JSONObject> invalidChildrenList = new ArrayList<JSONObject>();
+
+        for(String childId: childrenMap.keySet()) {
+            JSONObject childJS = childrenMap.get(childId);
+            String parentId = getIdFromURI(childJS.getString("parent"));
+
+            int lc = 0; // the loop count
+            while(!topLevelParentList.contains(parentId)) {
+                lc++;
+
+                JSONObject parentJS = childrenMap.get(parentId);
+
+                parentId = getIdFromURI(parentJS.getString("parent"));
+
+                // we should never loop more than 12 times. If we do, this indicates
+                // a problem with parent child relationship
+                if(lc == 12) {
+                    invalidChildrenList.add(childJS);
+                    break;
+                }
+            }
+        }
+
+        // for each of the invalid children remove the parent reference to allow the record to save
+        for (JSONObject childJS : invalidChildrenList) {
+            childJS.remove("parent");
+        }
+
+        print("Number of Invalid Child/Parent Relationships: " + invalidChildrenList.size());
+
+        // return the inverse of if we have any invalid children
+        return invalidChildrenList.isEmpty();
     }
 
     /**
@@ -2270,7 +2385,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
     public void cleanUp() {
         copying = false;
 
-        // remove any un-liked classifications
+        // remove any un-linked classifications
         deleteUnlinkedClassifications();
 
         String totalRecordsCopied = getTotalRecordsCopiedMessage();
@@ -2582,7 +2697,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      */
     private String getIdFromURI(String uri) {
         int beginIndex = uri.lastIndexOf("/") + 1;
-        return uri.substring(beginIndex);
+        return uri.substring(beginIndex).replace("\"}", "");
     }
 
     /**
@@ -2591,29 +2706,32 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param args
      */
     public static void main(String[] args) throws JSONException {
-        String host = "http://archives-dev.library.illinois.edu/archondev/uiuctest";
-        ArchonClient archonClient = new ArchonClient(host, "aspace", "We$tbr0ok");
+        //String host = "http://archives-dev.library.illinois.edu/archondev/uiuctest";
+        //ArchonClient archonClient = new ArchonClient(host, "aspace", "We$tbr0ok");
 
         //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
         //String host = "http://archives-dev.library.illinois.edu/archondev/houston";
-        //String host = "http://localhost/~nathan/archon";
-        //ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
+        String host = "http://localhost/~nathan/archon";
+        ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
 
         archonClient.getSession();
 
         ASpaceCopyUtil aspaceCopyUtil  = new ASpaceCopyUtil(archonClient, "http://54.227.35.51:8089", "admin", "admin");
-        aspaceCopyUtil.getSession();
         aspaceCopyUtil.setSimulateRESTCalls(true);
+        aspaceCopyUtil.getSession();
         aspaceCopyUtil.setDefaultRepositoryId("1");
         aspaceCopyUtil.setBBCodeOption("-bbcode_html");
 
-        try {
-            /*ArrayList<String> recordList = new ArrayList<String>();
-            recordList.add("4719");
-            aspaceCopyUtil.setResourcesToCopyList(recordList);
+        // set any specific records to copy
+        ArrayList<String> resourcesIDsList = new ArrayList<String>();
+        resourcesIDsList.add("27-3");
+        //resourcesIDsList.add("MSS 332");
+        //aspaceCopyUtil.setResourcesToCopyList(resourcesIDsList);
 
-            //File recordDirectory = new File("/Users/nathan/temp/JSON_Records");
-            //aspaceCopyUtil.setRecordDumpDirectory(recordDirectory);*/
+        try {
+            /*
+            File recordDirectory = new File("/Users/nathan/temp/JSON_Records");
+            aspaceCopyUtil.setRecordDumpDirectory(recordDirectory);*/
 
             aspaceCopyUtil.copyEnumRecords();
             aspaceCopyUtil.copyRepositoryRecords();

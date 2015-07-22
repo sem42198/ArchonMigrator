@@ -216,38 +216,28 @@ public class dbCopyFrame extends JFrame {
                         if(!copyStopped) ascopy.copyRepositoryRecords();
                         if(!copyStopped) ascopy.mapRepositoryGroups();
                         //if(!copyStopped) ascopy.copyLocationRecords();
-                        //if(!copyStopped) ascopy.copyUserRecords();
+                        if(!copyStopped) ascopy.copyUserRecords();
                         if(!copyStopped) ascopy.copySubjectRecords();
                         if(!copyStopped) ascopy.copyCreatorRecords();
-                        //if(!copyStopped) ascopy.copyAccessionRecords();
-                        //if(!copyStopped) ascopy.copyDigitalObjectRecords();*/
+                        if(!copyStopped) ascopy.copyClassificationRecords();
+                        if(!copyStopped) ascopy.copyAccessionRecords();
+                        if(!copyStopped) ascopy.copyDigitalObjectRecords();
 
                         // save the record maps for possible future use
                         ascopy.saveURIMaps();
                     }
 
-                    /*
+
                     // get the number of resources to copy here to allow it to be reset while the migration
                     // has been started, but migration of resources has not yet started
                     int resourcesToCopy = 1000000;
-                    int threads = 1;
-
-                    ArrayList<String> resourcesIDsList = new ArrayList<String>();
 
                     try {
                         boolean deleteSavedResources = deleteResourcesCheckBox.isSelected();
                         ascopy.setDeleteSavedResources(deleteSavedResources);
 
-                        // get the number of threads to run the copy process in
-                        threads = Integer.parseInt(threadsTextField.getText());
-
                         // get the number of resource to copy
                         resourcesToCopy = Integer.parseInt(numResourceToCopyTextField.getText());
-
-                        // get the min/max resources to copy
-                        int batchMin = Integer.parseInt(batchMinTextField.getText());
-                        int batchMax = Integer.parseInt(batchMaxTextField.getText());
-                        ascopy.setBatchSizeLimits(batchMin, batchMax);
                     } catch (NumberFormatException nfe) { }
 
                     // check to make sure we didn't stop the copy process or resource to copy is
@@ -255,8 +245,8 @@ public class dbCopyFrame extends JFrame {
                     // to generate a URI map which contains no resource records for testing purposes
                     if(!copyStopped && resourcesToCopy != 0) {
                         ascopy.setResourcesToCopyList(resourcesIDsList);
-                        ascopy.copyResourceRecords(resourcesToCopy, threads);
-                    }*/
+                        ascopy.copyResourceRecords(resourcesToCopy);
+                    }
 
                     ascopy.cleanUp();
 
@@ -455,17 +445,12 @@ public class dbCopyFrame extends JFrame {
         useSaveURIMapsCheckBox = new JCheckBox();
         resetPassswordLabel = new JLabel();
         resetPasswordTextField = new JTextField();
-        threadLabel = new JLabel();
-        threadsTextField = new JTextField();
         simulateCheckBox = new JCheckBox();
         numResourceToCopyLabel = new JLabel();
         numResourceToCopyTextField = new JTextField();
         deleteResourcesCheckBox = new JCheckBox();
         resourcesToCopyLabel = new JLabel();
         resourcesToCopyTextField = new JTextField();
-        label1 = new JLabel();
-        batchMinTextField = new JTextField();
-        batchMaxTextField = new JTextField();
         outputConsoleLabel = new JLabel();
         copyProgressBar = new JProgressBar();
         scrollPane1 = new JScrollPane();
@@ -485,7 +470,7 @@ public class dbCopyFrame extends JFrame {
         CellConstraints cc = new CellConstraints();
 
         //======== this ========
-        setTitle("Archon Test Data Migrator (v07-01-2015)");
+        setTitle("Archon Data Migrator (ALPHA v0.1.0 07-22-2015)");
         Container contentPane = getContentPane();
         contentPane.setLayout(new BorderLayout());
 
@@ -508,11 +493,9 @@ public class dbCopyFrame extends JFrame {
                         FormFactory.LABEL_COMPONENT_GAP_COLSPEC,
                         FormFactory.DEFAULT_COLSPEC,
                         FormFactory.LABEL_COMPONENT_GAP_COLSPEC,
-                        FormFactory.DEFAULT_COLSPEC
+                        new ColumnSpec(ColumnSpec.FILL, Sizes.DEFAULT, FormSpec.DEFAULT_GROW)
                     },
                     new RowSpec[] {
-                        FormFactory.DEFAULT_ROWSPEC,
-                        FormFactory.LINE_GAP_ROWSPEC,
                         FormFactory.DEFAULT_ROWSPEC,
                         FormFactory.LINE_GAP_ROWSPEC,
                         FormFactory.DEFAULT_ROWSPEC,
@@ -558,7 +541,7 @@ public class dbCopyFrame extends JFrame {
 
                 //---- archonAdminTextField ----
                 archonAdminTextField.setText("sa");
-                contentPanel.add(archonAdminTextField, cc.xywh(5, 3, 3, 1));
+                contentPanel.add(archonAdminTextField, cc.xy(5, 3));
 
                 //---- archonPasswordLabel ----
                 archonPasswordLabel.setText("Password");
@@ -600,7 +583,7 @@ public class dbCopyFrame extends JFrame {
                 contentPanel.add(hostLabel, cc.xywh(3, 9, 2, 1));
 
                 //---- hostTextField ----
-                hostTextField.setText("http://54.81.48.185:8087");
+                hostTextField.setText("http://54.227.35.51:8089");
                 contentPanel.add(hostTextField, cc.xywh(5, 9, 7, 1));
 
                 //======== tracerPanel ========
@@ -609,7 +592,6 @@ public class dbCopyFrame extends JFrame {
 
                     //---- useTracerCheckBox ----
                     useTracerCheckBox.setText("Use Test Archon");
-                    useTracerCheckBox.setSelected(true);
                     tracerPanel.add(useTracerCheckBox);
 
                     //---- tracerComboBox ----
@@ -633,7 +615,7 @@ public class dbCopyFrame extends JFrame {
 
                 //---- adminTextField ----
                 adminTextField.setText("admin");
-                contentPanel.add(adminTextField, cc.xywh(5, 11, 3, 1));
+                contentPanel.add(adminTextField, cc.xy(5, 11));
 
                 //---- adminPasswordLabel ----
                 adminPasswordLabel.setText("Password");
@@ -653,54 +635,36 @@ public class dbCopyFrame extends JFrame {
 
                 //---- resetPasswordTextField ----
                 resetPasswordTextField.setText("archive");
-                contentPanel.add(resetPasswordTextField, cc.xywh(5, 13, 3, 1));
-
-                //---- threadLabel ----
-                threadLabel.setText("Threads");
-                contentPanel.add(threadLabel, cc.xy(9, 13));
-
-                //---- threadsTextField ----
-                threadsTextField.setColumns(4);
-                threadsTextField.setText("1");
-                contentPanel.add(threadsTextField, cc.xy(11, 13));
+                contentPanel.add(resetPasswordTextField, cc.xy(5, 13));
 
                 //---- simulateCheckBox ----
                 simulateCheckBox.setText("Simulate REST Calls");
                 contentPanel.add(simulateCheckBox, cc.xy(1, 15));
 
                 //---- numResourceToCopyLabel ----
-                numResourceToCopyLabel.setText("Number of  Resources To Copy");
+                numResourceToCopyLabel.setText("Resources To Copy");
                 contentPanel.add(numResourceToCopyLabel, cc.xywh(3, 15, 3, 1));
 
                 //---- numResourceToCopyTextField ----
                 numResourceToCopyTextField.setText("100000");
-                contentPanel.add(numResourceToCopyTextField, cc.xywh(7, 15, 5, 1));
+                contentPanel.add(numResourceToCopyTextField, cc.xy(5, 15));
 
                 //---- deleteResourcesCheckBox ----
                 deleteResourcesCheckBox.setText("Delete Previously Saved Resources");
                 contentPanel.add(deleteResourcesCheckBox, cc.xy(1, 17));
 
                 //---- resourcesToCopyLabel ----
-                resourcesToCopyLabel.setText("Resources To Copy ");
-                contentPanel.add(resourcesToCopyLabel, cc.xywh(3, 17, 3, 1));
+                resourcesToCopyLabel.setText("Migration Options");
+                contentPanel.add(resourcesToCopyLabel, cc.xy(3, 17));
+
+                //---- resourcesToCopyTextField ----
+                resourcesToCopyTextField.setText("-bbcode_html");
                 contentPanel.add(resourcesToCopyTextField, cc.xywh(5, 17, 7, 1));
-
-                //---- label1 ----
-                label1.setText("Batch Size Filter (Min/Max)");
-                contentPanel.add(label1, cc.xy(3, 19));
-
-                //---- batchMinTextField ----
-                batchMinTextField.setText("2");
-                contentPanel.add(batchMinTextField, cc.xy(5, 19));
-
-                //---- batchMaxTextField ----
-                batchMaxTextField.setText("40000");
-                contentPanel.add(batchMaxTextField, cc.xy(11, 19));
 
                 //---- outputConsoleLabel ----
                 outputConsoleLabel.setText("Output Console:");
-                contentPanel.add(outputConsoleLabel, cc.xy(1, 21));
-                contentPanel.add(copyProgressBar, cc.xywh(3, 21, 9, 1));
+                contentPanel.add(outputConsoleLabel, cc.xy(1, 19));
+                contentPanel.add(copyProgressBar, cc.xywh(3, 19, 9, 1));
 
                 //======== scrollPane1 ========
                 {
@@ -709,7 +673,7 @@ public class dbCopyFrame extends JFrame {
                     consoleTextArea.setRows(12);
                     scrollPane1.setViewportView(consoleTextArea);
                 }
-                contentPanel.add(scrollPane1, cc.xywh(1, 23, 11, 1));
+                contentPanel.add(scrollPane1, cc.xywh(1, 21, 11, 1));
 
                 //---- recordURIComboBox ----
                 recordURIComboBox.setModel(new DefaultComboBoxModel(new String[] {
@@ -725,7 +689,7 @@ public class dbCopyFrame extends JFrame {
                     "/config/enumerations"
                 }));
                 recordURIComboBox.setEditable(true);
-                contentPanel.add(recordURIComboBox, cc.xy(1, 25));
+                contentPanel.add(recordURIComboBox, cc.xy(1, 23));
 
                 //======== panel1 ========
                 {
@@ -737,19 +701,19 @@ public class dbCopyFrame extends JFrame {
 
                     //---- paramsTextField ----
                     paramsTextField.setColumns(20);
-                    paramsTextField.setText("-bbcode_html");
+                    paramsTextField.setText("page=1");
                     panel1.add(paramsTextField);
-                }
-                contentPanel.add(panel1, cc.xywh(3, 25, 5, 1));
 
-                //---- viewRecordButton ----
-                viewRecordButton.setText("View");
-                viewRecordButton.addActionListener(new ActionListener() {
-                    public void actionPerformed(ActionEvent e) {
-                        viewRecordButtonActionPerformed();
-                    }
-                });
-                contentPanel.add(viewRecordButton, cc.xywh(9, 25, 3, 1));
+                    //---- viewRecordButton ----
+                    viewRecordButton.setText("View");
+                    viewRecordButton.addActionListener(new ActionListener() {
+                        public void actionPerformed(ActionEvent e) {
+                            viewRecordButtonActionPerformed();
+                        }
+                    });
+                    panel1.add(viewRecordButton);
+                }
+                contentPanel.add(panel1, cc.xywh(3, 23, 9, 1));
             }
             dialogPane.add(contentPanel, BorderLayout.CENTER);
 
@@ -858,17 +822,12 @@ public class dbCopyFrame extends JFrame {
     private JCheckBox useSaveURIMapsCheckBox;
     private JLabel resetPassswordLabel;
     private JTextField resetPasswordTextField;
-    private JLabel threadLabel;
-    private JTextField threadsTextField;
     private JCheckBox simulateCheckBox;
     private JLabel numResourceToCopyLabel;
     private JTextField numResourceToCopyTextField;
     private JCheckBox deleteResourcesCheckBox;
     private JLabel resourcesToCopyLabel;
     private JTextField resourcesToCopyTextField;
-    private JLabel label1;
-    private JTextField batchMinTextField;
-    private JTextField batchMaxTextField;
     private JLabel outputConsoleLabel;
     private JProgressBar copyProgressBar;
     private JScrollPane scrollPane1;
