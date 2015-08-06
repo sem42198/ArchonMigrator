@@ -33,6 +33,10 @@ public class ASpaceMapper {
     private ArrayList<String> resourceIDs = new ArrayList<String>();
     private ArrayList<String> eadIDs = new ArrayList<String>();
 
+    // variable to keep track of filenames and their ids to make sure we have unique names
+    private ArrayList<String> digitalObjectFilenames = new ArrayList<String>();
+    private HashMap<String, String> fileIDsToFilenamesMap = new HashMap<String, String>();
+
     // some code used for testing
     private boolean makeUnique = false;
 
@@ -44,14 +48,20 @@ public class ASpaceMapper {
     private ASpaceCopyUtil aspaceCopyUtil;
 
     // used when generating errors
-    private String currentResourceRecordIdentifier;
+    private String currentCollectionRecordIdentifier;
 
     // date formatter used to convert date string to date object
     SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMdd");
 
-        // booleans used to convert some bbcode to html or blanks
+    // booleans used to convert some bbcode to html or blanks
     private boolean bbcodeToHTML = false;
     private boolean bbcodeToBlank = true;
+
+    // boolean to specify whether to publish the notes
+    private Boolean publishRecord = false;
+
+    // variable to store the base uri for digital objects
+    private String digitalObjectBaseURI = "";
 
     /**
      *  Main constructor
@@ -88,6 +98,15 @@ public class ASpaceMapper {
      */
     public void setASpaceDynamicEnums(HashMap<String, JSONObject> dynamicEnums) {
         enumUtil.setASpaceDynamicEnums(dynamicEnums);
+    }
+
+    /**
+     * Method to set the base URI for digital objects
+     *
+     * @param baseURI
+     */
+    public void setDigitalObjectBaseURI(String baseURI) {
+        digitalObjectBaseURI = baseURI;
     }
 
     /**
@@ -504,9 +523,12 @@ public class ASpaceMapper {
         Date date = getDate(record.getString("AccessionDate"));
 
         if (date == null) {
+            // use the default date of 01/01/9999
+            date = getDate("99990101");
+
+            // add an error message about this
             String message = "Invalid Accession Date for" + id_0 + "\n";
             aspaceCopyUtil.addErrorMessage(message);
-            return null;
         }
 
         json.put("title", title);
@@ -685,8 +707,9 @@ public class ASpaceMapper {
         // set the digital object type
         json.put("digital_object_type", "mixed_materials");
 
-        // set the restrictions apply
-        json.put("publish", convertToBoolean(record.getInt("Browsable")));
+        // set weather to publish
+        publishRecord = convertToBoolean(record.getInt("Browsable"));
+        json.put("publish", publishRecord);
 
         // add the notes
         addDigitalObjectNotes(record, json);
@@ -724,7 +747,7 @@ public class ASpaceMapper {
     }
 
     /**
-     * Method to convert external documents to the aspace external document object
+     * Method to add a file version object to the digital object
      *
      * @param fileVersionsJA
      */
@@ -739,9 +762,10 @@ public class ASpaceMapper {
 
             fileVersionsJA.put(fileVersionJS);
         } else if(record.has("Filename") && !record.getString("Filename").isEmpty()) {
-            JSONObject fileVersionJS = new JSONObject();
+            String filename = verifyFilename(record.getString("ID"), record.getString("Filename"));
 
-            fileVersionJS.put("file_uri", record.getString("Filename"));
+            JSONObject fileVersionJS = new JSONObject();
+            fileVersionJS.put("file_uri", digitalObjectBaseURI + filename);
             fileVersionJS.put("use_statement", "image-master");
             fileVersionJS.put("xlink_actuate_attribute", "none");
             fileVersionJS.put("xlink_show_attribute", "none");
@@ -753,18 +777,62 @@ public class ASpaceMapper {
     }
 
     /**
-     * Method to convert an resource record to json ASpace JSON
+     * Method to sanitize filenames and make them unique
+     * @param id
+     * @param filename
+     * @return
+     */
+    private String verifyFilename(String id, String filename) {
+        // first remove all none valid characters and replace with "_"
+        filename = filename.replaceAll("[^a-zA-Z0-9.-]", "_");
+
+        // now check to see if we have a unique name
+        if(!digitalObjectFilenames.contains(filename)) {
+            digitalObjectFilenames.add(filename);
+        } else {
+            String uniqueFilename;
+            int i = filename.lastIndexOf('.');
+
+            do {
+                if (i > 0) {
+                    uniqueFilename = filename.substring(0, i) + "-0" + randomString.nextString() + "." + filename.substring(i + 1);
+                } else {
+                    uniqueFilename = filename + "-0" + randomString.nextString();
+                }
+            } while (digitalObjectFilenames.contains(uniqueFilename));
+
+            filename = uniqueFilename;
+            digitalObjectFilenames.add(filename);
+        }
+
+        // add the filename and ID so we can save it later
+        fileIDsToFilenamesMap.put(id, filename);
+
+        return filename;
+    }
+
+    /**
+     * Method to return the hashmap containing the file ids and the files names for saving
+     * to the download directory
+     * @return
+     */
+    public HashMap<String, String> getFileIDsToFilenamesMap() {
+        return fileIDsToFilenamesMap;
+    }
+
+    /**
+     * Method to convert an collection record to json ASpace JSON
      *
      * @param record
      * @return
      * @throws Exception
      */
-    public JSONObject convertResource(JSONObject record) throws Exception {
+    public JSONObject convertCollection(JSONObject record) throws Exception {
         // Main json object
         JSONObject json = new JSONObject();
 
-        // add the AT database Id as an external ID
-        addExternalId(record, json, "resource");
+        // add the AR database Id as an external ID
+        addExternalId(record, json, "collection");
 
         /* Add fields needed for abstract_archival_object.rb */
 
@@ -780,7 +848,7 @@ public class ASpaceMapper {
         addResourceExtent(record, json);
 
         // add the date array containing the dates json objects
-        addResourceDates(record, json, "Resource: " + currentResourceRecordIdentifier);
+        addResourceDates(record, json, "Resource: " + currentCollectionRecordIdentifier);
 
         // add external documents
         String otherURL = record.getString("OtherURL");
@@ -980,6 +1048,8 @@ public class ASpaceMapper {
     public JSONObject convertResourceComponent(JSONObject record) throws Exception {
         // Main json object
         JSONObject json = new JSONObject();
+
+        json.put("publish", publishRecord);
 
         addExternalId(record, json, "resource_component");
 
@@ -1218,6 +1288,7 @@ public class ASpaceMapper {
         noteJS.put("jsonmodel_type", "note_singlepart");
         noteJS.put("type", noteType);
         noteJS.put("label", noteLabel);
+        noteJS.put("publish", publishRecord);
 
         JSONArray contentJA = new JSONArray();
         contentJA.put(noteContent);
@@ -1243,6 +1314,7 @@ public class ASpaceMapper {
         noteJS.put("jsonmodel_type", "note_multipart");
         noteJS.put("type", noteType);
         noteJS.put("label", noteLabel);
+        noteJS.put("publish", publishRecord);
 
         JSONArray subnotesJA = new JSONArray();
 
@@ -1265,6 +1337,7 @@ public class ASpaceMapper {
      */
     private void addTextNote(JSONObject noteJS, String content) throws Exception {
         noteJS.put("jsonmodel_type", "note_text");
+        noteJS.put("publish", publishRecord);
         noteJS.put("content", content);
     }
 
@@ -1285,6 +1358,7 @@ public class ASpaceMapper {
         noteJS.put("jsonmodel_type", "note_digital_object");
         noteJS.put("type", noteType);
         noteJS.put("label", noteLabel);
+        noteJS.put("publish", publishRecord);
 
         JSONArray contentJA = new JSONArray();
         contentJA.put(noteContent);
@@ -1532,8 +1606,8 @@ public class ASpaceMapper {
      *
      * @param identifier
      */
-    public void setCurrentResourceRecordIdentifier(String identifier) {
-        this.currentResourceRecordIdentifier = identifier;
+    public void setCurrentCollectionRecordIdentifier(String identifier) {
+        this.currentCollectionRecordIdentifier = identifier;
     }
 
     /**
@@ -1605,41 +1679,6 @@ public class ASpaceMapper {
      * @param args
      */
     public static void main(String[] args) throws JSONException {
-        String host = "http://archives-dev.library.illinois.edu/archondev/miami";
-        ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
-        archonClient.getSession();
-
         ASpaceMapper mapper = new ASpaceMapper();
-
-        // the json object containing list of records
-        JSONObject records;
-
-        records = archonClient.getDigitalObjectRecords();
-        System.out.println("Total Digital Object Records: " + records.length());
-
-        Iterator<String> keys = records.sortedKeys();
-        while(keys.hasNext()) {
-            String key  = keys.next();
-            JSONObject record = records.getJSONObject(key);
-
-            System.out.println("Converting digital object record: " + record.get("Title"));
-
-            try {
-                mapper.convertDigitalObject(record);
-
-                JSONArray components = record.getJSONArray("components");
-
-                for(int i = 0; i < components.length(); i++) {
-                    JSONObject component = components.getJSONObject(i);
-                    mapper.convertToDigitalObjectComponent(component);
-                    System.out.println("Converting digital object component: " + component.get("Title"));
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-
-            //JSONObject componentRecords = archonClient.getCollectionContentRecords(key);
-            //System.out.println("Total Collection Content Records: " + contentRecordsJS.length());
-        }
     }
 }

@@ -108,19 +108,14 @@ public class dbCopyFrame extends JFrame {
     }
 
     /**
-     * Method to copy data from AT to archive space. NO longer Used
+     * Method to copy data from AR to archive space. NO longer Used
      */
     private void CopyToASpaceButtonActionPerformed() {
         // reset the error count and error messages
         errorCountLabel.setText("N/A");
         migrationErrors = "";
 
-        // get the connection url for the
-        String sourceUrl = getArchonSourceUrl();
-
-        // load the source and destinations database connections
-        archonClient = new ArchonClient(sourceUrl, archonAdminTextField.getText(), archonPasswordTextField.getText());
-        String sourceSession = archonClient.getSession();
+        String sourceSession = getArchonSession();
 
         if (sourceSession != null) {
             startASpaceCopyProcess(archonClient);
@@ -128,6 +123,20 @@ public class dbCopyFrame extends JFrame {
             archonClient = null;
             consoleTextArea.setText("Source connection couldn't be established ...");
         }
+    }
+
+    /**
+     * Get a Session from the Archon backend
+     *
+     * @return
+     */
+    private String getArchonSession() {
+        // get the connection url for the
+        String sourceUrl = getArchonSourceUrl();
+
+        // load the source and destinations database connections
+        archonClient = new ArchonClient(sourceUrl, archonAdminTextField.getText(), archonPasswordTextField.getText());
+        return archonClient.getSession();
     }
 
     /**
@@ -188,10 +197,18 @@ public class dbCopyFrame extends JFrame {
                         return;
                     }
 
+                    // now check to make sure we have a lid directory if we want to save the
+                    // downloaded digital object files
+                    File downloadDirectory = null;
+
+                    if(downloadCheckBox.isSelected()) {
+                        downloadDirectory = verifyDownloadDirectory();
+                    }
+
                     // process special options here. This could be done better but its the
                     // quickest way to do it for now
                     String ids = resourcesToCopyTextField.getText().trim();
-                    ArrayList<String> resourcesIDsList = new ArrayList<String>();
+                    ArrayList<String> collectionsIDsList = new ArrayList<String>();
 
                     if (!ids.isEmpty()) {
                         String[] sa = ids.split("\\s*,\\s*");
@@ -201,7 +218,7 @@ public class dbCopyFrame extends JFrame {
                             if (id.startsWith("-")) {
                                 processSpecialOption(ascopy, id);
                             } else {
-                                resourcesIDsList.add(id);
+                                collectionsIDsList.add(id);
                             }
                         }
                     }
@@ -212,6 +229,11 @@ public class dbCopyFrame extends JFrame {
                     if(useSaveURIMapsCheckBox.isSelected() && ascopy.uriMapFileExist()) {
                         ascopy.loadURIMaps();
                     } else {
+                        // check to see if we need to set the default repository
+                        if(defaultRepositoryCheckBox.isSelected()) {
+                            ascopy.setDefaultRepositoryId(defaultRepositoryComboBox.getSelectedItem().toString());
+                        }
+
                         if(!copyStopped) ascopy.copyEnumRecords();
                         if(!copyStopped) ascopy.copyRepositoryRecords();
                         if(!copyStopped) ascopy.mapRepositoryGroups();
@@ -230,22 +252,27 @@ public class dbCopyFrame extends JFrame {
 
                     // get the number of resources to copy here to allow it to be reset while the migration
                     // has been started, but migration of resources has not yet started
-                    int resourcesToCopy = 1000000;
+                    int collectionsToCopy = 1000000;
 
                     try {
                         boolean deleteSavedResources = deleteResourcesCheckBox.isSelected();
                         ascopy.setDeleteSavedResources(deleteSavedResources);
 
-                        // get the number of resource to copy
-                        resourcesToCopy = Integer.parseInt(numResourceToCopyTextField.getText());
+                        // get the number of collections/resource to copy
+                        collectionsToCopy = Integer.parseInt(numResourceToCopyTextField.getText());
                     } catch (NumberFormatException nfe) { }
 
                     // check to make sure we didn't stop the copy process or resource to copy is
                     // not set to zero. Setting resources to copy to zero is a convenient way
                     // to generate a URI map which contains no resource records for testing purposes
-                    if(!copyStopped && resourcesToCopy != 0) {
-                        ascopy.setResourcesToCopyList(resourcesIDsList);
-                        ascopy.copyResourceRecords(resourcesToCopy);
+                    if(!copyStopped && collectionsToCopy != 0) {
+                        ascopy.setCollectionsToCopyList(collectionsIDsList);
+                        ascopy.copyCollectionRecords(collectionsToCopy);
+                    }
+
+                    // now download the digital object files
+                    if(downloadCheckBox.isSelected()) {
+                        ascopy.downloadDigitalObjectFiles(downloadDirectory);
                     }
 
                     ascopy.cleanUp();
@@ -266,6 +293,28 @@ public class dbCopyFrame extends JFrame {
         });
 
         performer.start();
+    }
+
+    /**
+     * Method to verify that the directory selected for download files those exists and is
+     * writetable
+     *
+     * @return
+     */
+    private File verifyDownloadDirectory() {
+        String filename = downloadFolderTextField.getText();
+        File directory = new File(filename);
+
+        if(directory.exists() && directory.isDirectory() && directory.canWrite()) {
+            return directory;
+        } else {
+            JOptionPane.showMessageDialog(this,
+                "Please specify a valid directory to\ndownload digital object files to.",
+                "Invalid Download Directory",
+                JOptionPane.ERROR_MESSAGE);
+
+            return null;
+        }
     }
 
     /**
@@ -416,6 +465,37 @@ public class dbCopyFrame extends JFrame {
         }
     }
 
+    /**
+     * Method to load repositories from Archon backend
+     */
+    private void defaultRepositoryCheckBoxActionPerformed() {
+        if(!defaultRepositoryCheckBox.isSelected()) {
+            return;
+        }
+
+        // get the connection url for the
+        String sourceUrl = getArchonSourceUrl();
+
+        // load the source and destinations database connections
+        archonClient = new ArchonClient(sourceUrl, archonAdminTextField.getText(), archonPasswordTextField.getText());
+        String sourceSession = archonClient.getSession();
+
+        if (sourceSession != null) {
+            defaultRepositoryComboBox.removeAllItems();
+            defaultRepositoryComboBox.addItem("Based On Linked Collection");
+
+            ArrayList<String> repositoryList = archonClient.getRepositoryRecordsList();
+
+            for(String repositoryName: repositoryList) {
+                defaultRepositoryComboBox.addItem(repositoryName);
+            }
+        } else {
+            archonClient = null;
+            consoleTextArea.setText("Source connection couldn't be established ...");
+        }
+
+    }
+
     private void initComponents() {
         // JFormDesigner - Component initialization - DO NOT MODIFY  //GEN-BEGIN:initComponents
         // Generated using JFormDesigner non-commercial license
@@ -432,6 +512,8 @@ public class dbCopyFrame extends JFrame {
         doURLTextField = new JTextField();
         downloadFolderButton = new JButton();
         downloadFolderTextField = new JTextField();
+        defaultRepositoryCheckBox = new JCheckBox();
+        defaultRepositoryComboBox = new JComboBox();
         copyToASpaceButton = new JButton();
         hostLabel = new JLabel();
         hostTextField = new JTextField();
@@ -470,7 +552,7 @@ public class dbCopyFrame extends JFrame {
         CellConstraints cc = new CellConstraints();
 
         //======== this ========
-        setTitle("Archon Data Migrator (ALPHA v0.1.1 07-22-2015)");
+        setTitle("Archon Data Migrator (ALPHA v0.2.0 08-06-2015)");
         Container contentPane = getContentPane();
         contentPane.setLayout(new BorderLayout());
 
@@ -496,6 +578,8 @@ public class dbCopyFrame extends JFrame {
                         new ColumnSpec(ColumnSpec.FILL, Sizes.DEFAULT, FormSpec.DEFAULT_GROW)
                     },
                     new RowSpec[] {
+                        FormFactory.DEFAULT_ROWSPEC,
+                        FormFactory.LINE_GAP_ROWSPEC,
                         FormFactory.DEFAULT_ROWSPEC,
                         FormFactory.LINE_GAP_ROWSPEC,
                         FormFactory.DEFAULT_ROWSPEC,
@@ -556,7 +640,7 @@ public class dbCopyFrame extends JFrame {
                 contentPanel.add(downloadCheckBox, cc.xy(1, 5));
 
                 //---- doURLTextField ----
-                doURLTextField.setText("http://digital_object.base.url");
+                doURLTextField.setText("http://digital_object.base.url/files");
                 contentPanel.add(doURLTextField, cc.xywh(3, 5, 9, 1));
 
                 //---- downloadFolderButton ----
@@ -569,6 +653,22 @@ public class dbCopyFrame extends JFrame {
                 contentPanel.add(downloadFolderButton, cc.xy(1, 7));
                 contentPanel.add(downloadFolderTextField, cc.xywh(3, 7, 9, 1));
 
+                //---- defaultRepositoryCheckBox ----
+                defaultRepositoryCheckBox.setText("Set Default Repository");
+                defaultRepositoryCheckBox.setSelected(true);
+                defaultRepositoryCheckBox.addActionListener(new ActionListener() {
+                    public void actionPerformed(ActionEvent e) {
+                        defaultRepositoryCheckBoxActionPerformed();
+                    }
+                });
+                contentPanel.add(defaultRepositoryCheckBox, cc.xy(1, 9));
+
+                //---- defaultRepositoryComboBox ----
+                defaultRepositoryComboBox.setModel(new DefaultComboBoxModel(new String[] {
+                    "Based On Linked Collection"
+                }));
+                contentPanel.add(defaultRepositoryComboBox, cc.xywh(3, 9, 9, 1));
+
                 //---- copyToASpaceButton ----
                 copyToASpaceButton.setText("Copy To Archives Space");
                 copyToASpaceButton.addActionListener(new ActionListener() {
@@ -576,15 +676,15 @@ public class dbCopyFrame extends JFrame {
                         CopyToASpaceButtonActionPerformed();
                     }
                 });
-                contentPanel.add(copyToASpaceButton, cc.xy(1, 9));
+                contentPanel.add(copyToASpaceButton, cc.xy(1, 11));
 
                 //---- hostLabel ----
                 hostLabel.setText("Host");
-                contentPanel.add(hostLabel, cc.xywh(3, 9, 2, 1));
+                contentPanel.add(hostLabel, cc.xywh(3, 11, 2, 1));
 
                 //---- hostTextField ----
                 hostTextField.setText("http://54.227.35.51:8089");
-                contentPanel.add(hostTextField, cc.xywh(5, 9, 7, 1));
+                contentPanel.add(hostTextField, cc.xywh(5, 11, 7, 1));
 
                 //======== tracerPanel ========
                 {
@@ -607,64 +707,64 @@ public class dbCopyFrame extends JFrame {
                     }));
                     tracerPanel.add(tracerComboBox);
                 }
-                contentPanel.add(tracerPanel, cc.xy(1, 11));
+                contentPanel.add(tracerPanel, cc.xy(1, 13));
 
                 //---- adminLabel ----
                 adminLabel.setText("ASpace admin");
-                contentPanel.add(adminLabel, cc.xy(3, 11));
+                contentPanel.add(adminLabel, cc.xy(3, 13));
 
                 //---- adminTextField ----
                 adminTextField.setText("admin");
-                contentPanel.add(adminTextField, cc.xy(5, 11));
+                contentPanel.add(adminTextField, cc.xy(5, 13));
 
                 //---- adminPasswordLabel ----
                 adminPasswordLabel.setText("Password");
-                contentPanel.add(adminPasswordLabel, cc.xy(9, 11));
+                contentPanel.add(adminPasswordLabel, cc.xy(9, 13));
 
                 //---- adminPasswordTextField ----
                 adminPasswordTextField.setText("admin");
-                contentPanel.add(adminPasswordTextField, cc.xy(11, 11));
+                contentPanel.add(adminPasswordTextField, cc.xy(11, 13));
 
                 //---- useSaveURIMapsCheckBox ----
                 useSaveURIMapsCheckBox.setText("Continue From Resource Records");
-                contentPanel.add(useSaveURIMapsCheckBox, cc.xy(1, 13));
+                contentPanel.add(useSaveURIMapsCheckBox, cc.xy(1, 15));
 
                 //---- resetPassswordLabel ----
                 resetPassswordLabel.setText("Reset Password");
-                contentPanel.add(resetPassswordLabel, cc.xy(3, 13));
+                contentPanel.add(resetPassswordLabel, cc.xy(3, 15));
 
                 //---- resetPasswordTextField ----
                 resetPasswordTextField.setText("archive");
-                contentPanel.add(resetPasswordTextField, cc.xy(5, 13));
+                contentPanel.add(resetPasswordTextField, cc.xy(5, 15));
 
                 //---- simulateCheckBox ----
                 simulateCheckBox.setText("Simulate REST Calls");
-                contentPanel.add(simulateCheckBox, cc.xy(1, 15));
+                contentPanel.add(simulateCheckBox, cc.xy(1, 17));
 
                 //---- numResourceToCopyLabel ----
                 numResourceToCopyLabel.setText("Resources To Copy");
-                contentPanel.add(numResourceToCopyLabel, cc.xywh(3, 15, 3, 1));
+                contentPanel.add(numResourceToCopyLabel, cc.xywh(3, 17, 3, 1));
 
                 //---- numResourceToCopyTextField ----
                 numResourceToCopyTextField.setText("100000");
-                contentPanel.add(numResourceToCopyTextField, cc.xy(5, 15));
+                contentPanel.add(numResourceToCopyTextField, cc.xy(5, 17));
 
                 //---- deleteResourcesCheckBox ----
                 deleteResourcesCheckBox.setText("Delete Previously Saved Resources");
-                contentPanel.add(deleteResourcesCheckBox, cc.xy(1, 17));
+                contentPanel.add(deleteResourcesCheckBox, cc.xy(1, 19));
 
                 //---- resourcesToCopyLabel ----
                 resourcesToCopyLabel.setText("Migration Options");
-                contentPanel.add(resourcesToCopyLabel, cc.xy(3, 17));
+                contentPanel.add(resourcesToCopyLabel, cc.xy(3, 19));
 
                 //---- resourcesToCopyTextField ----
                 resourcesToCopyTextField.setText("-bbcode_html");
-                contentPanel.add(resourcesToCopyTextField, cc.xywh(5, 17, 7, 1));
+                contentPanel.add(resourcesToCopyTextField, cc.xywh(5, 19, 7, 1));
 
                 //---- outputConsoleLabel ----
                 outputConsoleLabel.setText("Output Console:");
-                contentPanel.add(outputConsoleLabel, cc.xy(1, 19));
-                contentPanel.add(copyProgressBar, cc.xywh(3, 19, 9, 1));
+                contentPanel.add(outputConsoleLabel, cc.xy(1, 21));
+                contentPanel.add(copyProgressBar, cc.xywh(3, 21, 9, 1));
 
                 //======== scrollPane1 ========
                 {
@@ -673,7 +773,7 @@ public class dbCopyFrame extends JFrame {
                     consoleTextArea.setRows(12);
                     scrollPane1.setViewportView(consoleTextArea);
                 }
-                contentPanel.add(scrollPane1, cc.xywh(1, 21, 11, 1));
+                contentPanel.add(scrollPane1, cc.xywh(1, 23, 11, 1));
 
                 //---- recordURIComboBox ----
                 recordURIComboBox.setModel(new DefaultComboBoxModel(new String[] {
@@ -689,7 +789,7 @@ public class dbCopyFrame extends JFrame {
                     "/config/enumerations"
                 }));
                 recordURIComboBox.setEditable(true);
-                contentPanel.add(recordURIComboBox, cc.xy(1, 23));
+                contentPanel.add(recordURIComboBox, cc.xy(1, 25));
 
                 //======== panel1 ========
                 {
@@ -713,7 +813,7 @@ public class dbCopyFrame extends JFrame {
                     });
                     panel1.add(viewRecordButton);
                 }
-                contentPanel.add(panel1, cc.xywh(3, 23, 9, 1));
+                contentPanel.add(panel1, cc.xywh(3, 25, 9, 1));
             }
             dialogPane.add(contentPanel, BorderLayout.CENTER);
 
@@ -809,6 +909,8 @@ public class dbCopyFrame extends JFrame {
     private JTextField doURLTextField;
     private JButton downloadFolderButton;
     private JTextField downloadFolderTextField;
+    private JCheckBox defaultRepositoryCheckBox;
+    private JComboBox defaultRepositoryComboBox;
     private JButton copyToASpaceButton;
     private JLabel hostLabel;
     private JTextField hostTextField;

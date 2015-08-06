@@ -290,6 +290,32 @@ public class ArchonClient {
     }
 
     /**
+     * Method to return an array list containing the repository records ID and short name
+     *
+     * @return
+     */
+    public ArrayList<String> getRepositoryRecordsList() {
+        ArrayList<String> repositoryList = new ArrayList<String>();
+
+        JSONObject recordsJS = getRepositoryRecords();
+        Iterator<String> keys = recordsJS.keys();
+
+        while (keys.hasNext()) {
+            String key = keys.next();
+            try {
+                JSONObject repository = recordsJS.getJSONObject(key);
+                String repoID = repository.getString("ID");
+                String shortName = repository.getString("Name");
+                repositoryList.add(repoID + " - " + shortName);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+        }
+
+        return repositoryList;
+    }
+
+    /**
      * Method to return the repository records
      *
      * @return
@@ -358,7 +384,7 @@ public class ArchonClient {
 
             // now we have to iterate through the return records and place the child records
             // with their parent classifications, by doing several loops which is fine since there
-            // isnot going to be large amount
+            // are not going to be large amount of records
 
             // first place all the records in a hashmap to make lookup efficient
             HashMap<String, JSONObject> recordsMap = new HashMap<String, JSONObject>();
@@ -720,8 +746,8 @@ public class ArchonClient {
      */
     public static void main(String[] args) throws JSONException {
         //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
-        String host = "http://quanta2.bobst.nyu.edu/~nathan/archon";
-        ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
+        String host = "http://localhost/~nathan/archon";
+        ArchonClient archonClient = new ArchonClient(host, "sa", "admin");
         archonClient.getSession();
 
         // the json object containing list of records
@@ -755,18 +781,18 @@ public class ArchonClient {
         //System.out.println("Total Creators: " + records.getString("total_records"));
 
         // get the classifications
-        records = archonClient.getClassificationRecords();
+        //records = archonClient.getClassificationRecords();
         //System.out.println("Total Classifications: " + records.getString("total_records"));
 
         // get the accession
         //records = archonClient.getAccessionRecords();
-        //System.out.println("Total Accessions: " + records.getString("total_records"));
-        /*
+        //System.out.println("Total Accessions: " + records.length());
+
         // get the digital object records
         records = archonClient.getDigitalObjectRecords();
         System.out.println("Total Digital Objects: " + records.length());
 
-        records = archonClient.getCollectionRecords();
+        /*records = archonClient.getCollectionRecords();
         System.out.println("Total Collection Records: " + records.length());
 
         Iterator<String> keys = records.keys();
