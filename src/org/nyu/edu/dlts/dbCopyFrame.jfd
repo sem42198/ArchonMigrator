@@ -14,7 +14,7 @@
       </object>
       <void method="setProperty">
        <string>title</string>
-       <string>Archon Data Migrator (ALPHA v0.2.0B 08-07-2015)</string>
+       <string>Archon Data Migrator (ALPHA v0.2.0 08-07-2015)</string>
       </void>
       <void method="add">
        <object class="com.jformdesigner.model.FormContainer">

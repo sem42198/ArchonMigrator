@@ -802,7 +802,7 @@ public class ASpaceMapper {
                 uniqueFilename = filename + "-0" + id;
             }
 
-            String message = "Duplicate Filename: "  + filename  + " Changed To: " + uniqueFilename + "\n";
+            String message = "Duplicate Digital Object Filename: "  + filename  + " Changed To: " + uniqueFilename + "\n";
             aspaceCopyUtil.addErrorMessage(message);
 
             filename = uniqueFilename;
