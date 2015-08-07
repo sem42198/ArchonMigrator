@@ -1297,7 +1297,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @throws Exception
      */
     private String saveDigitalObject(String batchEndpoint, JSONArray batchJA) throws Exception {
-
         JSONObject digitalObjectJS = batchJA.getJSONObject(0);
         String digitalObjectURI = digitalObjectJS.getString("uri");
         String digitalObjectTitle = digitalObjectJS.getString("title");
@@ -1347,7 +1346,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      *
      * @param downloadDirectory
      */
-    public void downloadDigitalObjectFiles(File downloadDirectory) {
+    public void downloadDigitalObjectFiles(File downloadDirectory) throws Exception {
         print("Copying Digital Object Files ...");
 
         // update the progress so that the title changes
@@ -1356,17 +1355,27 @@ public class ASpaceCopyUtil implements  PrintConsole {
         HashMap<String, String> fileIDsToFilenamesMap = mapper.getFileIDsToFilenamesMap();
 
         int total = fileIDsToFilenamesMap.size();
+        int success = 0;
         int count = 0;
 
         for(String id: fileIDsToFilenamesMap.keySet()) {
-            String filename = fileIDsToFilenamesMap.get(id);
-            System.out.println("Downloading: " + filename);
+            if (stopCopy) break;
 
-            //TODO Add code to actually download the file to the download directory
+            String filename = fileIDsToFilenamesMap.get(id);
+
+            boolean downloaded = archonClient.downloadDigitalObjectFile(downloadDirectory, id, filename);
+            if(downloaded) {
+                success++;
+                print("Downloaded Digital Object File: " + filename);
+            } else {
+                print("Fail -- Download of Digital Object File: " + filename);
+            }
 
             count++;
             updateProgress("Digital Object Files", total, count);
         }
+
+        updateRecordTotals("Digital Object File Download", total, success);
     }
 
     /**
@@ -1516,7 +1525,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                     String cid = component.getString("ID");
 
                     if(contentType != 2) {
-                        JSONObject componentJS = mapper.convertResourceComponent(component);
+                        JSONObject componentJS = mapper.convertCollectionContent(component);
 
                         if (componentJS != null) {
                             componentJS.put("resource", mapper.getReferenceObject(resourceURI));
@@ -2755,9 +2764,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param args
      */
     public static void main(String[] args) throws JSONException {
-        String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
+        //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
         //String host = "http://archives-dev.library.illinois.edu/archondev/houston";
-        //String host = "http://localhost/~nathan/archon";
+        String host = "http://localhost/~nathan/archon";
         ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
 
         archonClient.getSession();

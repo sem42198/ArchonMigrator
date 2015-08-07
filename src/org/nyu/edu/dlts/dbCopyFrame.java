@@ -237,7 +237,6 @@ public class dbCopyFrame extends JFrame {
                         if(!copyStopped) ascopy.copyEnumRecords();
                         if(!copyStopped) ascopy.copyRepositoryRecords();
                         if(!copyStopped) ascopy.mapRepositoryGroups();
-                        //if(!copyStopped) ascopy.copyLocationRecords();
                         if(!copyStopped) ascopy.copyUserRecords();
                         if(!copyStopped) ascopy.copySubjectRecords();
                         if(!copyStopped) ascopy.copyCreatorRecords();
@@ -552,7 +551,7 @@ public class dbCopyFrame extends JFrame {
         CellConstraints cc = new CellConstraints();
 
         //======== this ========
-        setTitle("Archon Data Migrator (ALPHA v0.2.0 08-06-2015)");
+        setTitle("Archon Data Migrator (ALPHA v0.2.0B 08-07-2015)");
         Container contentPane = getContentPane();
         contentPane.setLayout(new BorderLayout());
 
@@ -651,11 +650,13 @@ public class dbCopyFrame extends JFrame {
                     }
                 });
                 contentPanel.add(downloadFolderButton, cc.xy(1, 7));
+
+                //---- downloadFolderTextField ----
+                downloadFolderTextField.setText("/Users/nathan/temp/archon_files");
                 contentPanel.add(downloadFolderTextField, cc.xywh(3, 7, 9, 1));
 
                 //---- defaultRepositoryCheckBox ----
                 defaultRepositoryCheckBox.setText("Set Default Repository");
-                defaultRepositoryCheckBox.setSelected(true);
                 defaultRepositoryCheckBox.addActionListener(new ActionListener() {
                     public void actionPerformed(ActionEvent e) {
                         defaultRepositoryCheckBoxActionPerformed();

@@ -14,7 +14,7 @@
       </object>
       <void method="setProperty">
        <string>title</string>
-       <string>Archon Data Migrator (ALPHA v0.2.0 08-06-2015)</string>
+       <string>Archon Data Migrator (ALPHA v0.2.0B 08-07-2015)</string>
       </void>
       <void method="add">
        <object class="com.jformdesigner.model.FormContainer">
@@ -287,6 +287,10 @@
           <void method="add">
            <object class="com.jformdesigner.model.FormComponent">
             <string>javax.swing.JTextField</string>
+            <void method="setProperty">
+             <string>text</string>
+             <string>/Users/nathan/temp/archon_files</string>
+            </void>
             <void property="name">
              <string>downloadFolderTextField</string>
             </void>
@@ -313,10 +317,6 @@
             <void method="setProperty">
              <string>text</string>
              <string>Set Default Repository</string>
-            </void>
-            <void method="setProperty">
-             <string>selected</string>
-             <boolean>true</boolean>
             </void>
             <void property="name">
              <string>defaultRepositoryCheckBox</string>

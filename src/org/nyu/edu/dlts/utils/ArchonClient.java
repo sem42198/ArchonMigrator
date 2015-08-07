@@ -16,6 +16,9 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -545,6 +548,66 @@ public class ArchonClient {
             e.printStackTrace();
             return null;
         }
+    }
+
+    /**
+     * Method to download a digital object file to the download directory
+     *
+     * @param id
+     * @return
+     */
+    public boolean downloadDigitalObjectFile(File downloadDirectory, String id, String filename) throws Exception {
+        String fullUrl = host + DIGITAL_FILE_BLOB_ENDPOINT + "&fileid=" + id;
+        GetMethod get = new GetMethod(fullUrl);
+
+        // add session to the header if it's not null
+        if (session != null) {
+            get.setRequestHeader("session", session);
+        }
+
+        byte[] responseBytes;
+        FileOutputStream fos = null;
+        boolean downloaded = false;
+
+        try {
+
+            if (debug) System.out.println("get: " + fullUrl);
+
+            int statusCode = httpclient.executeMethod(get);
+
+            String statusMessage = "Status code: " + statusCode +
+                    "\nStatus text: " + get.getStatusText();
+
+            if (debug) System.out.println(statusMessage);
+
+            if (get.getStatusCode() == HttpStatus.SC_OK) {
+                try {
+                    responseBytes = get.getResponseBody();
+
+                    // now save the bytes to a file
+                    File file = new File(downloadDirectory, filename);
+                    fos = new FileOutputStream(file);
+                    fos.write(responseBytes);
+
+                    downloaded = true;
+                    if (debug) System.out.println("response bytes: " + responseBytes.length);
+                } catch (Exception e) {
+                    errorBuffer.append(statusMessage).append("\n\n").append(filename).append("\n");
+                    e.printStackTrace();
+                    throw e;
+                }
+            } else {
+                errorBuffer.append(statusMessage).append("\n");
+            }
+        } finally {
+            get.releaseConnection();
+
+            if(fos != null) {
+                fos.close();
+            }
+        }
+
+        return downloaded;
     }
 
     /**

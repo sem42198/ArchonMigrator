@@ -727,6 +727,8 @@ public class ASpaceMapper {
         // Main json object
         JSONObject json = new JSONObject();
 
+        json.put("publish", publishRecord);
+
         /* add the fields required for abstract_archival_object.rb */
         String title = record.getString("Title");
         json.put("title", fixEmptyString(title));
@@ -790,16 +792,18 @@ public class ASpaceMapper {
         if(!digitalObjectFilenames.contains(filename)) {
             digitalObjectFilenames.add(filename);
         } else {
+            // create a unique filename by appending the -0 + id to name
             String uniqueFilename;
             int i = filename.lastIndexOf('.');
 
-            do {
-                if (i > 0) {
-                    uniqueFilename = filename.substring(0, i) + "-0" + randomString.nextString() + "." + filename.substring(i + 1);
-                } else {
-                    uniqueFilename = filename + "-0" + randomString.nextString();
-                }
-            } while (digitalObjectFilenames.contains(uniqueFilename));
+            if (i > 0) {
+                uniqueFilename = filename.substring(0, i) + "-0" + id + "." + filename.substring(i + 1);
+            } else {
+                uniqueFilename = filename + "-0" + id;
+            }
+
+            String message = "Duplicate Filename: "  + filename  + " Changed To: " + uniqueFilename + "\n";
+            aspaceCopyUtil.addErrorMessage(message);
 
             filename = uniqueFilename;
             digitalObjectFilenames.add(filename);
@@ -1039,13 +1043,13 @@ public class ASpaceMapper {
     }
 
     /**
-     * Method to convert an resource component record to json ASpace JSON
+     * Method to convert a collection content record to json ASpace JSON
      *
      * @param record
      * @return
      * @throws Exception
      */
-    public JSONObject convertResourceComponent(JSONObject record) throws Exception {
+    public JSONObject convertCollectionContent(JSONObject record) throws Exception {
         // Main json object
         JSONObject json = new JSONObject();
 
