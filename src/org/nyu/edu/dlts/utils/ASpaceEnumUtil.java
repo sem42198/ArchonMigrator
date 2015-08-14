@@ -1110,55 +1110,14 @@ public class ASpaceEnumUtil {
      * if statements with "&& returnATValue" should really be removed, but depending on if the
      * enum is ASpace is expanded then this will save some work
      *
-     * @param atValue
+     * @param arID
      * @return
      */
-    public String getASpaceInstanceContainerType(String atValue) {
-        if(atValue == null || atValue.isEmpty()) return "item";
+    public String getASpaceInstanceContainerType(String arID) {
+        if(arID == null || arID.isEmpty()) return "unknown";
 
-        atValue = atValue.toLowerCase();
-
-        if(atValue.equals("bin") && returnATValue) {
-            return atValue;
-        } else if(atValue.equals("box")) {
-            return ASpaceInstanceContainerTypes[0];
-        } else if(atValue.equals("box-folder") && returnATValue) {
-            return atValue;
-        } else if(atValue.equals("carton")) {
-            return ASpaceInstanceContainerTypes[1];
-        } else if(atValue.equals("cassette") && returnATValue) {
-            return atValue;
-        } else if(atValue.equals("disk") && returnATValue) {
-            return atValue;
-        } else if(atValue.equals("drawer") && returnATValue) {
-            return atValue;
-        } else if(atValue.equals("folder")) {
-            return ASpaceInstanceContainerTypes[3];
-        } else if(atValue.equals("frame")) {
-            return ASpaceInstanceContainerTypes[4];
-        } else if(atValue.equals("map-case") && returnATValue) {
-            return atValue;
-        } else if(atValue.equals("object")) {
-            return ASpaceInstanceContainerTypes[5];
-        } else if(atValue.equals("oversize") && returnATValue) {
-            return atValue;
-        } else if(atValue.equals("page")) {
-            return ASpaceInstanceContainerTypes[6];
-        } else if(atValue.equals("reel")) {
-            return ASpaceInstanceContainerTypes[7];
-        } else if(atValue.equals("reel-frame") && returnATValue) {
-            return atValue;
-        } else if(atValue.equals("volume")) {
-            return ASpaceInstanceContainerTypes[8];
-        } else if(returnATValue) {
-            if(validContainerTypes.contains(atValue)) {
-                return atValue;
-            } else {
-                return "item";
-            }
-        } else {
-            return UNMAPPED;
-        }
+        String key = "container_types_" + arID;
+        return getEnumValueForID(key, "unknown");
     }
 
     /**

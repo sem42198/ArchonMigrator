@@ -1,5 +1,6 @@
 package org.nyu.edu.dlts.utils;
 
+import org.apache.commons.collections.map.HashedMap;
 import org.apache.commons.httpclient.NameValuePair;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -110,7 +111,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
     private int copyCount = 1;
 
     // integer to keep track of total number of aspace client threads
-    private int totalASpaceClients = 0;
+    private int totalASpaceClients = 1;
 
     // integers to keeps track of the number of digital objects copied
     private int digitalObjectTotal = 0;
@@ -1317,13 +1318,15 @@ public class ASpaceCopyUtil implements  PrintConsole {
             print("Batch Copied Digital Object: " + digitalObjectTitle + " :: " + arId);
             return digitalObjectURI;
         } else {
-            print("Batch Copy Fail -- Digital Object: " + digitalObjectTitle);
+            String message = "Batch Copy Fail -- Digital Object: " + digitalObjectTitle;
+            addErrorMessage(message + "\n");
+            print(message);
             return null;
         }
     }
 
     /**
-     * Method to store the digital object in a hash map so it can be saved later
+     * Method to store the digital object in a hashmap so it can be saved later
      *
      * @param batchJA
      *
@@ -1513,6 +1516,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 String resourceURI = endpoint + "/" + dbId;
                 String aoEndpoint = repoURI + ASpaceClient.ARCHIVAL_OBJECT_ENDPOINT;
 
+                // use a hash set to store a list of physical only component which have already
+                // been added as an instance
+                HashSet<String> createdInstances = new HashSet<String>();
+                HashSet<String> physicalComponents = new HashSet<String>();
+                HashMap<String, JSONObject> intellectualComponents = new HashMap<String, JSONObject>();
+
                 // add any archival objects here
                 JSONObject resourceComponents = archonClient.getCollectionContentRecords(dbId);
 
@@ -1533,10 +1542,10 @@ public class ASpaceCopyUtil implements  PrintConsole {
                             // set the parent component if needed
                             int rootContentId = component.getInt("RootContentID");
                             int parentId = component.getInt("ParentID");
-                            //int parentId = 0; // debug code
 
+                            ArrayList<String> containerList = new ArrayList<String>();
                             if (rootContentId != 0 && parentId != 0) {
-                                parentId = getParentId(resourceComponents, componentJS, parentId);
+                                parentId = getParentId(resourceComponents, containerList, componentJS, parentId);
 
                                 // parent id might still actually be zero, which would cause a save error
                                 if(parentId != 0) {
@@ -1556,13 +1565,16 @@ public class ASpaceCopyUtil implements  PrintConsole {
                             addCreators(componentJS, component.getJSONArray("Creators"), title);
 
                             // add the instances
-                            //addInstances(componentJS, component, repositoryID, repoURI + "/");
+                            addInstances(createdInstances, containerList, component, componentJS, title);
 
                             addDigitalInstances(componentJS, "content_" + cid, collectionTitle, batchEndpoint);
 
                             // save this json record now to get the URI
                             componentJS.put("uri", aoEndpoint + "/" + cid);
                             componentJS.put("jsonmodel_type", "archival_object");
+
+                            // store this component so we can add any instances later
+                            intellectualComponents.put(cid, componentJS);
 
                             batchJA.put(componentJS);
 
@@ -1571,10 +1583,16 @@ public class ASpaceCopyUtil implements  PrintConsole {
                             print("Fail -- Resource Component to JSON: " + title);
                         }
                     } else {
-                        print("Creating Instance for " + component.get("ID"));
+                        String componentId = component.getString("ID");
+                        physicalComponents.add(componentId);
                     }
                 }
 
+                // now add any instances to the physically only components
+                addInstancesForPhysicalComponents(createdInstances, physicalComponents,
+                        intellectualComponents, resourceJS, resourceComponents);
+
+                // free some memory now
                 freeMemory();
 
                 print("Batch Copying Resource # " + count + " || Title: " + collectionTitle);
@@ -1627,17 +1645,136 @@ public class ASpaceCopyUtil implements  PrintConsole {
         // update the number of digital records that were copied during processing of collection records
         updateRecordTotals("Instance Digital Objects", digitalObjectTotal, digitalObjectSuccess);
 
-        // wait for any threads to finish before returning if we running more than one
-        // thread to copy
-        while(getTotalASpaceClients() != 0 && !stopCopy) {
-            print("Waiting for last set of records to be copied ...");
-            Thread.sleep(60000); //wait 60 seconds before checking again
-        }
-
         // update the number of resource actually copied
         updateRecordTotals("Resource Records", total, copyCount);
 
-        System.out.println("\n\nMaximum Batch Length: " + maxBatchLength);
+        // TODO -- remove debug code below
+        System.out.println("\n\nMaximum Batch Length: " + maxBatchLength + " records");
+    }
+
+    /**
+     * Method add any instances to the resource record which have not been added to component
+     * records already. This method is a mess due to the conflation of intellectual and physical arrangement
+     * @param createdInstances
+     * @param physicalComponents
+     * @param intellectualComponents
+     * @param resourceJS
+     * @param resourceComponents
+     * @throws Exception
+     */
+    private void addInstancesForPhysicalComponents(HashSet<String> createdInstances,
+                                                   HashSet<String> physicalComponents,
+                                                   HashMap<String, JSONObject> intellectualComponents,
+                                                   JSONObject resourceJS,
+                                                   JSONObject resourceComponents) throws Exception {
+        for (String componentId : physicalComponents) {
+            if (!createdInstances.contains(componentId)) {
+                ArrayList<String> containerList = new ArrayList<String>();
+                JSONObject component = resourceComponents.getJSONObject(componentId);
+
+                int rootContentId = component.getInt("RootContentID");
+                int parentId = component.getInt("ParentID");
+                JSONArray instancesJA = new JSONArray();
+
+                if (parentId == 0) {
+                    addContainerListInformation(containerList, component);
+
+                    if(resourceJS.has("instances")) {
+                        instancesJA = resourceJS.getJSONArray("instances");
+                    }
+
+                    createInstance(null, containerList, instancesJA, resourceJS.getString("title"));
+                } else if (rootContentId != 0 && parentId != 0) {
+                    int topParentId = getParentId(resourceComponents, containerList, null, parentId);
+
+                    if (topParentId == parentId) {
+                        addContainerListInformation(containerList, component);
+                    }
+
+                    // now check to see if we adding this to a component or the resource record
+                    if(parentId == 0) {
+                        if(resourceJS.has("instances")) {
+                            instancesJA = resourceJS.getJSONArray("instances");
+                        }
+
+                        createInstance(null, containerList, instancesJA, resourceJS.getString("title"));
+                    } else {
+                        JSONObject parentJS = intellectualComponents.get("" + topParentId);
+                        if(parentJS.has("instances")) {
+                            instancesJA = resourceJS.getJSONArray("instances");
+                        }
+
+                        createInstance(null, containerList, instancesJA, parentJS.getString("title"));
+                    }
+                }
+
+                print("Creating Instance: " + componentId + " Added to Parent: " + parentId);
+            }
+        }
+    }
+
+    /**
+     * Method to add an instance record
+     * @param createdInstances
+     * @param componentJS
+     * @param title
+     */
+    private void addInstances(HashSet<String> createdInstances, ArrayList<String> containerList,
+                              JSONObject component, JSONObject componentJS, String title) throws JSONException {
+        JSONArray instancesJA = new JSONArray();
+
+        // see if we have to add an instance for a physical only parents
+        if(containerList != null && containerList.size() != 0) {
+            createInstance(createdInstances, containerList, instancesJA, title);
+        }
+
+        // if the component is physical/intellectual we need to add an instance
+        if(component.getInt("ContentType") == 3) {
+            containerList = new ArrayList<String>();
+            addContainerListInformation(containerList, component);
+            createInstance(null, containerList, instancesJA, componentJS.getString("title"));
+        }
+
+        if (instancesJA.length() != 0) {
+            componentJS.put("instances", instancesJA);
+        }
+    }
+
+    /**
+     *
+     *
+     * @param createdInstances
+     * @param instancesJA
+     * @param containerList
+     * @param title
+     */
+    private void createInstance(HashSet<String> createdInstances, ArrayList<String> containerList,
+                                JSONArray instancesJA, String title) throws JSONException {
+        JSONObject instanceJS = new JSONObject();
+        instanceJS.put("instance_type", "text");
+
+        JSONObject containerJS = new JSONObject();
+
+        int length = containerList.size();
+        for (int i = 0; i < length; i++) {
+            String[] sa = containerList.get(i).split("::");
+
+            int position = i + 1;
+            containerJS.put("type_" + position, sa[0]);
+            containerJS.put("indicator_" + position, sa[1]);
+
+            // stored the id in the created instances set so we know not to create and
+            // instance for this object
+            if(createdInstances != null) {
+                createdInstances.add(sa[2]);
+            }
+        }
+
+        instanceJS.put("container", containerJS);
+
+        instancesJA.put(instanceJS);
+
+        print("Added Analog Instance to Record: " + title);
     }
 
     /**
@@ -1647,7 +1784,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param recordTitle the title of the record
      * @throws Exception
      */
-    private synchronized void addDigitalInstances(JSONObject json, String recordKey, String recordTitle, String batchEndpoint) throws Exception {
+    private void addDigitalInstances(JSONObject json, String recordKey, String recordTitle, String batchEndpoint) throws Exception {
         JSONArray instancesJA = new JSONArray();
 
         if(digitalObjectMap.containsKey(recordKey)) {
@@ -1673,60 +1810,81 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
-         * Method to add a related accessions to a resource record
-         *
-         * @param json The ASpace resource record
-         */
-        private synchronized void addRelatedAccessions(JSONObject json, String dbId, String arId, String recordRepoURI) throws Exception {
-            String message;
-            JSONArray accessionsJA = new JSONArray();
+     * Method to add a related accessions to a resource record
+     *
+     * @param json The ASpace resource record
+     */
+    private void addRelatedAccessions(JSONObject json, String dbId, String arId, String recordRepoURI) throws Exception {
+        String message;
+        JSONArray accessionsJA = new JSONArray();
 
-            if(resourcesToAccessionsMap.containsKey(dbId)) {
-                for(String accessionURI: resourcesToAccessionsMap.get(dbId)) {
-                    if (accessionURI.contains(recordRepoURI)) {
-                        accessionsJA.put(mapper.getReferenceObject(accessionURI));
-                        if (debug) print("Added Accession to Resource: " + arId);
-                    } else {
-                        message = "Repository Mismatch Between Resource -- Accession: " +
-                                arId + " [ " + recordRepoURI + " ] / [ " + accessionURI + " ]\n";
-                        addErrorMessage(message);
-                    }
+        if (resourcesToAccessionsMap.containsKey(dbId)) {
+            for (String accessionURI : resourcesToAccessionsMap.get(dbId)) {
+                if (accessionURI.contains(recordRepoURI)) {
+                    accessionsJA.put(mapper.getReferenceObject(accessionURI));
+                    if (debug) print("Added Accession to Resource: " + arId);
+                } else {
+                    message = "Repository Mismatch Between Resource -- Accession: " +
+                            arId + " [ " + recordRepoURI + " ] / [ " + accessionURI + " ]\n";
+                    addErrorMessage(message);
                 }
             }
-
-            if (accessionsJA.length() != 0) {
-                json.put("related_accessions", accessionsJA);
-            }
         }
+
+        if (accessionsJA.length() != 0) {
+            json.put("related_accessions", accessionsJA);
+        }
+    }
 
     /**
      * Method to return the parent id. This is needed in case we have a parent that a type 2 so we actually
      * need to get the grandparent, or even older is this case
      *
      * @param resourceComponents
+     * @param containerList
      * @param componentJS
      * @param parentId
      * @return
      */
-    private int getParentId(JSONObject resourceComponents, JSONObject componentJS, Integer parentId) throws Exception {
-        while (parentId != 0 && resourceComponents.has(parentId.toString())) {
+    private int getParentId(JSONObject resourceComponents, final ArrayList<String> containerList, JSONObject componentJS, Integer parentId) throws Exception {
+        int topParentId= 0;
+
+        while (parentId != 0  && resourceComponents.has(parentId.toString())) {
             JSONObject parent = resourceComponents.getJSONObject(parentId.toString());
 
             if(parent.getInt("ContentType") == 2) {
                 parentId = parent.getInt("ParentID");
 
-                // save the sort order number of the parent for proper sorting
-                String paddedSortOrder = String.format("%05d", parent.getInt("SortOrder"));
-                componentJS.put("sort_key2", paddedSortOrder);
+                if(componentJS != null) {
+                    // save the sort order number of the parent for proper sorting
+                    String paddedSortOrder = String.format("%05d", parent.getInt("SortOrder"));
+                    componentJS.put("sort_key2", paddedSortOrder);
+                } else {
+                    System.out.println("Adding SInstance");
+                }
 
-                // add an instance that will represent this parent
+                // store the container information for this physical only instance
+                // in the Archon component record for convenience
+                addContainerListInformation(containerList, parent);
 
             } else {
-                return parentId;
+                topParentId = parentId;
+                break;
             }
         }
 
-        return 0;
+        return topParentId;
+    }
+
+    /**
+     *
+     * @param containerList
+     * @param component
+     */
+    private void addContainerListInformation(final ArrayList<String> containerList, JSONObject component) throws JSONException {
+        String type = enumUtil.getASpaceInstanceContainerType(component.getString("ContainerTypeID"));
+        String indicator = component.getString("ContainerIndicator");
+        containerList.add(type + "::" + indicator + "::" + component.get("ID"));
     }
 
     /**
@@ -1834,7 +1992,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param recordTitle The record parent record title
      * @throws Exception
      */
-    private synchronized void addSubjects(JSONObject json, JSONArray subjectIds, String recordTitle) throws Exception {
+    private void addSubjects(JSONObject json, JSONArray subjectIds, String recordTitle) throws Exception {
         JSONArray subjectsJA = new JSONArray();
 
         for (int i = 0; i < subjectIds.length(); i++) {
@@ -1881,7 +2039,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param creatorIds The array of subject ids
      * @throws Exception
      */
-    private synchronized JSONArray addCreators(JSONObject json, JSONArray creatorIds, String recordTitle) throws Exception {
+    private JSONArray addCreators(JSONObject json, JSONArray creatorIds, String recordTitle) throws Exception {
         JSONArray linkedAgentsJA = new JSONArray();
 
         for (int i = 0; i < creatorIds.length(); i++) {
@@ -1974,7 +2132,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param recordTitle The record parent record title
      * @throws Exception
      */
-    private synchronized void addClassifications(String repoURI, JSONObject json, JSONArray classificationIds, String recordTitle) throws Exception {
+    private void addClassifications(String repoURI, JSONObject json, JSONArray classificationIds, String recordTitle) throws Exception {
         JSONArray classificationsJA = new JSONArray();
 
         for (int i = 0; i < classificationIds.length(); i++) {
@@ -2003,7 +2161,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param locations
      * @param accessionTitle
      */
-    private synchronized void addAccessionInstances(JSONObject accessionJS, JSONArray locations, String accessionTitle) throws Exception {
+    private void addAccessionInstances(JSONObject accessionJS, JSONArray locations, String accessionTitle) throws Exception {
         JSONArray instancesJA = new JSONArray();
 
         for (int i = 0; i < locations.length(); i++) {
@@ -2144,8 +2302,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
         }
 
         return connected;
-
-
     }
 
     /**
@@ -2171,7 +2327,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param oldIdentifier
      * @param uri
      */
-    private synchronized void updateResourceURIMap(String oldIdentifier, String uri) {
+    private void updateResourceURIMap(String oldIdentifier, String uri) {
         resourceURIMap.put(oldIdentifier, uri);
         saveURIMaps();
     }
@@ -2179,7 +2335,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
     /**
      * Method to increment the number of resource records copied
      */
-    private synchronized void incrementCopyCount() {
+    private void incrementCopyCount() {
         copyCount++;
     }
 
@@ -2256,7 +2412,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param key The hash map key
      * @return The URI of the new repository
      */
-    private synchronized String getClassificationURI(String key) {
+    private String getClassificationURI(String key) {
         if (classificationURIMap.containsKey(key)) {
             linkedClassificationSet.add(key);
             return classificationURIMap.get(key);
@@ -2276,7 +2432,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param endpoint to make post to
      * @param jsonText record
      */
-    public synchronized String saveRecord(String endpoint, String jsonText, String atId) {
+    public String saveRecord(String endpoint, String jsonText, String atId) {
         return saveRecord(endpoint, jsonText, null, atId);
     }
 
@@ -2288,7 +2444,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param jsonText record
      * @param params   parameters to pass to service
      */
-    public synchronized String saveRecord(String endpoint, String jsonText, NameValuePair[] params, String atId) {
+    public String saveRecord(String endpoint, String jsonText, NameValuePair[] params, String atId) {
         String id = NO_ID;
 
         try {
@@ -2300,7 +2456,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 print("Route: " + endpoint + "\n" + jsonText);
             }
 
-            // we may want to save this record to the file system for debuging purposes
+            // we may want to save this record to the file system for debugging purposes
             if(recordDumpDirectory != null) {
                 saveRecordToFile(jsonText);
             }
@@ -2339,7 +2495,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
     /**
      * Method to increment the error count
      */
-    private synchronized void incrementErrorCount() {
+    private void incrementErrorCount() {
         saveErrorCount++;
 
         if(errorCountLabel != null) {
@@ -2351,7 +2507,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * Method to increment the aspace error count that occur when saving to the
      * backend
      */
-    private synchronized void incrementASpaceErrorCount() {
+    private void incrementASpaceErrorCount() {
         aspaceErrorCount++;
     }
 
@@ -2360,7 +2516,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      *
      * @param string
      */
-    public synchronized void print(String string) {
+    public void print(String string) {
         if(outputConsole != null) {
             messageCount++;
 
@@ -2382,7 +2538,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param total
      * @param count
      */
-    private synchronized void updateProgress(String recordType, int total, int count) {
+    private void updateProgress(String recordType, int total, int count) {
         if(progressBar == null) return;
 
         if(count == -1) {
@@ -2428,7 +2584,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      *
      * @param message
      */
-    public synchronized void addErrorMessage(String message) {
+    public void addErrorMessage(String message) {
         errorBuffer.append(message).append("\n");
         incrementErrorCount();
     }
@@ -2565,20 +2721,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
         System.out.println("Free memory after GC:  " + freeMem/1048576L + "MB");
 
         System.out.println("Number of client threads: "  + getTotalASpaceClients() + "\n");
-    }
-
-    /**
-     * increment the number of aspace clients
-     */
-    private synchronized void incrementTotalASpaceClients() {
-        totalASpaceClients++;
-    }
-
-    /**
-     * Method to decrement the total number of asapce client
-     */
-    private synchronized void decrementTotalASpaceClients() {
-        totalASpaceClients--;
     }
 
     /**
@@ -2765,14 +2907,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
      */
     public static void main(String[] args) throws JSONException {
         //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
-        //String host = "http://archives-dev.library.illinois.edu/archondev/houston";
         String host = "http://localhost/~nathan/archon";
         ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
 
         archonClient.getSession();
 
         ASpaceCopyUtil aspaceCopyUtil  = new ASpaceCopyUtil(archonClient, "http://54.227.35.51:8089", "admin", "admin");
-        aspaceCopyUtil.setSimulateRESTCalls(true);
+        aspaceCopyUtil.setSimulateRESTCalls(false);
         aspaceCopyUtil.getSession();
         aspaceCopyUtil.setBBCodeOption("-bbcode_html");
 
@@ -2790,21 +2931,19 @@ public class ASpaceCopyUtil implements  PrintConsole {
             aspaceCopyUtil.copyEnumRecords();
             aspaceCopyUtil.copyRepositoryRecords();
             aspaceCopyUtil.mapRepositoryGroups();
-
-            /*
-            aspaceCopyUtil.copyUserRecords();
+            /*aspaceCopyUtil.copyUserRecords();
             aspaceCopyUtil.copySubjectRecords();
             aspaceCopyUtil.copyCreatorRecords();
             aspaceCopyUtil.copyClassificationRecords();
             aspaceCopyUtil.findAccessionRecordRepositories();
             aspaceCopyUtil.copyAccessionRecords(); */
             aspaceCopyUtil.copyDigitalObjectRecords();
-            /*aspaceCopyUtil.copyCollectionRecords(100000);
+            aspaceCopyUtil.copyCollectionRecords(100000);
 
             // removed all unused classifications
-            aspaceCopyUtil.deleteUnlinkedClassifications();*/
+            //aspaceCopyUtil.deleteUnlinkedClassifications();
 
-            aspaceCopyUtil.downloadDigitalObjectFiles(new File("/Users/nathan/temp/archon_files"));
+            //aspaceCopyUtil.downloadDigitalObjectFiles(new File("/Users/nathan/temp/archon_files"));
 
             // print out the error messages
             System.out.println("\n\nSave Errors:\n" + aspaceCopyUtil.getSaveErrorMessages());

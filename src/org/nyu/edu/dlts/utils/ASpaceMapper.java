@@ -514,7 +514,7 @@ public class ASpaceMapper {
         String title = fixEmptyString(record.getString("Title"), null);
 
         String id_0 = record.getString("Identifier");
-        String id_1 = getUniqueID(ASpaceClient.ACCESSION_ENDPOINT, id_0, null);
+        String id_1 = getUniqueID(ASpaceClient.ACCESSION_ENDPOINT, id_0, title);
 
         if (makeUnique) {
             id_0 = randomStringLong.nextString();
@@ -702,7 +702,7 @@ public class ASpaceMapper {
         addFileVersion(fileVersionsJA, record, "Digital Object");
         json.put("file_versions", fileVersionsJA);
 
-        json.put("digital_object_id", getUniqueID(ASpaceClient.DIGITAL_OBJECT_ENDPOINT, record.getString("Identifier"), null));
+        json.put("digital_object_id", getUniqueID(ASpaceClient.DIGITAL_OBJECT_ENDPOINT, record.getString("Identifier"), title));
 
         // set the digital object type
         json.put("digital_object_type", "mixed_materials");
@@ -870,7 +870,7 @@ public class ASpaceMapper {
         }
 
         // now make sure we don't already have this ID
-        String id_1 = getUniqueID(ASpaceClient.RESOURCE_ENDPOINT, id_0, null);
+        String id_1 = getUniqueID(ASpaceClient.RESOURCE_ENDPOINT, id_0, title);
 
         if(makeUnique) {
             id_0 = randomStringLong.nextString();
@@ -890,7 +890,7 @@ public class ASpaceMapper {
         json.put("container_summary", "Archon Container Summary");
 
         // add fields for EAD
-        json.put("ead_id", getUniqueID("ead", "Archon EAD", null));
+        json.put("ead_id", getUniqueID("ead", "Archon EAD", title));
         json.put("ead_location", "Archon Finding Aid location");
         json.put("finding_aid_title", "Archon Finding Aid Title");
         json.put("finding_aid_date", record.get("PublicationDate"));
@@ -1496,7 +1496,7 @@ public class ASpaceMapper {
      * @param id
      * @return
      */
-    private String getUniqueID(String endpoint, String id, String[] idParts) {
+    private String getUniqueID(String endpoint, String id, String title) {
         id = id.trim();
 
         if(endpoint.equals(ASpaceClient.DIGITAL_OBJECT_ENDPOINT)) {
@@ -1528,8 +1528,9 @@ public class ASpaceMapper {
 
                 accessionIDs.add(nid);
 
-                message = "Duplicate Accession Id: "  + id  + " Added: " + nid + "\n";
-                aspaceCopyUtil.addErrorMessage(message);
+                message = "Duplicate Accession (" + title +  ") Id: "  + id  + " Added: " + nid + "\n";
+                System.out.println(message);
+                //aspaceCopyUtil.addErrorMessage(message);
 
                 return nid;
             }
@@ -1548,8 +1549,9 @@ public class ASpaceMapper {
 
                 resourceIDs.add(nid);
 
-                message = "Duplicate Resource Id: "  + id  + " Added: " + nid + "\n";
-                aspaceCopyUtil.addErrorMessage(message);
+                message = "Duplicate Resource (" + title +  ") Id: "  + id  + " Added: " + nid + "\n";
+                System.out.println(message);
+                //aspaceCopyUtil.addErrorMessage(message);
 
                 id = nid;
             }
