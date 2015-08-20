@@ -1,6 +1,5 @@
 package org.nyu.edu.dlts.utils;
 
-import org.apache.commons.collections.map.HashedMap;
 import org.apache.commons.httpclient.NameValuePair;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -113,9 +112,11 @@ public class ASpaceCopyUtil implements  PrintConsole {
     // integer to keep track of total number of aspace client threads
     private int totalASpaceClients = 1;
 
-    // integers to keeps track of the number of digital objects copied
+    // integers to keeps track of the number of digital objects  and locations copied
     private int digitalObjectTotal = 0;
     private int digitalObjectSuccess = 0;
+    private int locationTotal = 0;
+    private int locationSuccess = 0;
 
     // boolean to specify weather to save digital objects by themselves or with the resource records
     boolean saveDigitalObjectsWithResources = true;
@@ -1119,7 +1120,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                 // add an instance that holds the location information
                 if(accession.has("Locations")) {
-                    addAccessionInstances(accessionJS, accession.getJSONArray("Locations"), accessionTitle);
+                    addLocationInstances(accessionJS, accession.getJSONArray("Locations"), "accession");
                 }
 
                 String uri = repoURI + ASpaceClient.ACCESSION_ENDPOINT;
@@ -1507,6 +1508,11 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 // add the linked accessions
                 addRelatedAccessions(resourceJS, dbId, arId, repoURI + "/");
 
+                // add an instance that holds the location information
+                if(collection.has("Locations")) {
+                    addLocationInstances(resourceJS, collection.getJSONArray("Locations"), "text");
+                }
+
                 // if we using batch import then we not not going to
                 resourceJS.put("uri", endpoint + "/" + dbId);
                 resourceJS.put("jsonmodel_type", "resource");
@@ -1645,8 +1651,11 @@ public class ASpaceCopyUtil implements  PrintConsole {
         // update the number of digital records that were copied during processing of collection records
         updateRecordTotals("Instance Digital Objects", digitalObjectTotal, digitalObjectSuccess);
 
+        // update the number of location records copied
+        updateRecordTotals("Locations", locationTotal, locationSuccess);
+
         // update the number of resource actually copied
-        updateRecordTotals("Resource Records", total, copyCount);
+        updateRecordTotals("Collections", total, copyCount);
 
         // TODO -- remove debug code below
         System.out.println("\n\nMaximum Batch Length: " + maxBatchLength + " records");
@@ -1701,11 +1710,17 @@ public class ASpaceCopyUtil implements  PrintConsole {
                     } else {
                         JSONObject parentJS = intellectualComponents.get("" + topParentId);
                         if(parentJS.has("instances")) {
-                            instancesJA = resourceJS.getJSONArray("instances");
+                            instancesJA = parentJS.getJSONArray("instances");
                         }
 
                         createInstance(null, containerList, instancesJA, parentJS.getString("title"));
                     }
+                }
+
+                //debug code
+                if(containerList.size() > 1) {
+                    String message = "Multi-level container processed: " + componentId;
+                    addErrorMessage(message);
                 }
 
                 print("Creating Instance: " + componentId + " Added to Parent: " + parentId);
@@ -2155,13 +2170,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
-     * Method to add an instance to an Accession record
+     * Method to add an instance to an Accession or Resource record whick hold location information
      *
-     * @param accessionJS
+     * @param recordJS
      * @param locations
-     * @param accessionTitle
      */
-    private void addAccessionInstances(JSONObject accessionJS, JSONArray locations, String accessionTitle) throws Exception {
+    private void addLocationInstances(JSONObject recordJS, JSONArray locations, String instanceType) throws Exception {
         JSONArray instancesJA = new JSONArray();
 
         for (int i = 0; i < locations.length(); i++) {
@@ -2169,12 +2183,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
             JSONObject location = locations.getJSONObject(i);
 
             // set the type
-            instanceJS.put("instance_type", "accession");
+            instanceJS.put("instance_type", instanceType);
 
             // add the container now
             JSONObject containerJS = new JSONObject();
 
-            containerJS.put("type_1", "object");
+            containerJS.put("type_1", "box");
             containerJS.put("indicator_1", location.get("Content"));
 
             // add the extent information
@@ -2214,7 +2228,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         // if we had any instances add them parent json record
         if (instancesJA.length() != 0) {
-            accessionJS.put("instances", instancesJA);
+            recordJS.put("instances", instancesJA);
         }
     }
 
@@ -2259,11 +2273,14 @@ public class ASpaceCopyUtil implements  PrintConsole {
         if(locationURIMap.containsKey(key)) {
             return locationURIMap.get(key);
         } else {
+            locationTotal++;
+
             String id = saveRecord(ASpaceClient.LOCATION_ENDPOINT, locationJS.toString(), "Location->" + key);
 
             if (!id.equalsIgnoreCase(NO_ID)) {
                 String uri = ASpaceClient.LOCATION_ENDPOINT + "/" + id;
                 locationURIMap.put(key, uri);
+                locationSuccess++;
                 print("Copied Location: " + key + " :: " + id);
                 return uri;
             } else {
@@ -2906,8 +2923,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param args
      */
     public static void main(String[] args) throws JSONException {
-        //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
-        String host = "http://localhost/~nathan/archon";
+        String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
+        //String host = "http://localhost/~nathan/archon";
         ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
 
         archonClient.getSession();
@@ -2931,24 +2948,24 @@ public class ASpaceCopyUtil implements  PrintConsole {
             aspaceCopyUtil.copyEnumRecords();
             aspaceCopyUtil.copyRepositoryRecords();
             aspaceCopyUtil.mapRepositoryGroups();
-            /*aspaceCopyUtil.copyUserRecords();
+            aspaceCopyUtil.copyUserRecords();
             aspaceCopyUtil.copySubjectRecords();
             aspaceCopyUtil.copyCreatorRecords();
             aspaceCopyUtil.copyClassificationRecords();
             aspaceCopyUtil.findAccessionRecordRepositories();
-            aspaceCopyUtil.copyAccessionRecords(); */
+            aspaceCopyUtil.copyAccessionRecords();
             aspaceCopyUtil.copyDigitalObjectRecords();
             aspaceCopyUtil.copyCollectionRecords(100000);
 
+            aspaceCopyUtil.downloadDigitalObjectFiles(new File("/Users/nathan/temp/archon_files"));
+
             // removed all unused classifications
-            //aspaceCopyUtil.deleteUnlinkedClassifications();
-
-            //aspaceCopyUtil.downloadDigitalObjectFiles(new File("/Users/nathan/temp/archon_files"));
-
-            // print out the error messages
-            System.out.println("\n\nSave Errors:\n" + aspaceCopyUtil.getSaveErrorMessages());
+            aspaceCopyUtil.deleteUnlinkedClassifications();
         } catch (Exception e) {
             e.printStackTrace();
         }
+
+        // print out the error messages
+        System.out.println("\n\nSave Errors:\n" + aspaceCopyUtil.getSaveErrorMessages());
     }
 }

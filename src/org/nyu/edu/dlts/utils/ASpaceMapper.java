@@ -172,6 +172,11 @@ public class ASpaceMapper {
             }
         }
 
+        // need to add other to extent unit type enum list
+        if(endpoint.contains("extentunits")) {
+            valuesJA.put(ASpaceEnumUtil.UNMAPPED);
+        }
+
         if(count != 0) {
             return dynamicEnumJS;
         } else {
@@ -927,7 +932,7 @@ public class ASpaceMapper {
         JSONObject extentJS = new JSONObject();
 
         extentJS.put("portion", "whole");
-        extentJS.put("extent_type", "linear_feet");
+        extentJS.put("extent_type", enumUtil.getASpaceExtentType(record.getInt("ExtentUnitID")));
 
         if (!record.getString("Extent").isEmpty()) {
             extentJS.put("number", record.getString("Extent"));
@@ -943,8 +948,10 @@ public class ASpaceMapper {
             extentJS = new JSONObject();
 
             extentJS.put("portion", "whole");
-            extentJS.put("extent_type", "cubic_feet");
+            extentJS.put("extent_type", ASpaceEnumUtil.UNMAPPED);
             extentJS.put("number", altExtent);
+
+            extentJA.put(extentJS);
         }
 
         json.put("extents", extentJA);
