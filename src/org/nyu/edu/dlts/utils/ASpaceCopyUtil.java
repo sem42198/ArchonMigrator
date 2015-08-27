@@ -1320,7 +1320,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
             return digitalObjectURI;
         } else {
             String message = "Batch Copy Fail -- Digital Object: " + digitalObjectTitle;
-            addErrorMessage(message + "\n");
             print(message);
             return null;
         }
@@ -1622,8 +1621,10 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 /* END DEBUG */
 
                 // redo the sort order so we don't have any collisions and things are sorted correctly
-                if(!redoComponentSortOrder(parentMap)) {
-                    String message = "Invalid Parent/Child Relationship: "  + collectionTitle  + " :: " + arId + "\n";
+                String invalidChildRecordIds = redoComponentSortOrder(parentMap);
+                if(!invalidChildRecordIds.isEmpty()) {
+                    String message = "Invalid Parent/Child Relationship: "  + collectionTitle  +
+                            " :: " + currentRecordIdentifier + "\n Collection Content Ids (" + invalidChildRecordIds + ")\n";
                     addErrorMessage(message);
                 }
 
@@ -1715,12 +1716,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                         createInstance(null, containerList, instancesJA, parentJS.getString("title"));
                     }
-                }
-
-                //debug code
-                if(containerList.size() > 1) {
-                    String message = "Multi-level container processed: " + componentId;
-                    addErrorMessage(message);
                 }
 
                 print("Creating Instance: " + componentId + " Added to Parent: " + parentId);
@@ -1927,7 +1922,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * Method to redo the sort order for the components, and at the same time check to see if the
      * parent child relationships are valid
      */
-    private boolean redoComponentSortOrder(HashMap<String, JSONObject> parentMap) throws Exception {
+    private String redoComponentSortOrder(HashMap<String, JSONObject> parentMap) throws Exception {
         // this collections are used to find invalid parent child relations which would cause the
         // the record to fail to save due to infinite loop situation
         ArrayList topLevelParentList = new ArrayList();
@@ -1955,7 +1950,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
         }
 
         // let verify if we have parent
-        return verifyChildParentRelationship(topLevelParentList, childrenMap);
+        return verifyChildParentRelationship(topLevelParentList, childrenMap).trim();
     }
 
     /**
@@ -1964,8 +1959,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param topLevelParentList
      * @param childrenMap
      */
-    private boolean verifyChildParentRelationship(ArrayList topLevelParentList, HashMap<String, JSONObject> childrenMap) throws JSONException {
+    private String verifyChildParentRelationship(ArrayList topLevelParentList, HashMap<String, JSONObject> childrenMap) throws JSONException {
         ArrayList<JSONObject> invalidChildrenList = new ArrayList<JSONObject>();
+        StringBuilder sb = new StringBuilder();
 
         for(String childId: childrenMap.keySet()) {
             JSONObject childJS = childrenMap.get(childId);
@@ -1983,6 +1979,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 // a problem with parent child relationship
                 if(lc == 12) {
                     invalidChildrenList.add(childJS);
+                    sb.append(childId + " ");
                     break;
                 }
             }
@@ -1996,7 +1993,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
         print("Number of Invalid Child/Parent Relationships: " + invalidChildrenList.size());
 
         // return the inverse of if we have any invalid children
-        return invalidChildrenList.isEmpty();
+        return sb.toString();
     }
 
     /**
@@ -2314,6 +2311,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
         boolean connected = aspaceClient.getSession();
 
         if (connected) {
+            aspaceClient.setASpaceCopyUtil(this);
             aspaceInformation = aspaceClient.getArchivesSpaceInformation();
             setASpaceVersion();
         }
@@ -2491,7 +2489,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 print("Error saving record " + jsonText);
             }
 
-            incrementErrorCount();
+            incrementSaveErrorCount();
             incrementASpaceErrorCount();
         }
 
@@ -2512,20 +2510,23 @@ public class ASpaceCopyUtil implements  PrintConsole {
     /**
      * Method to increment the error count
      */
-    private void incrementErrorCount() {
+    public void incrementSaveErrorCount() {
         saveErrorCount++;
-
-        if(errorCountLabel != null) {
-            errorCountLabel.setText(saveErrorCount + " and counting ...");
-        }
     }
 
     /**
      * Method to increment the aspace error count that occur when saving to the
      * backend
      */
-    private void incrementASpaceErrorCount() {
+    public void incrementASpaceErrorCount() {
         aspaceErrorCount++;
+        updateErrorCountLabel();
+    }
+
+    private void updateErrorCountLabel() {
+        if(errorCountLabel != null) {
+            errorCountLabel.setText(aspaceErrorCount + " and counting ...");
+        }
     }
 
     /**
@@ -2596,6 +2597,10 @@ public class ASpaceCopyUtil implements  PrintConsole {
         return saveErrorCount;
     }
 
+    public int getASpaceErrorCount() {
+        return aspaceErrorCount;
+    }
+
     /**
      * Method to add an error message to the buffer
      *
@@ -2603,7 +2608,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      */
     public void addErrorMessage(String message) {
         errorBuffer.append(message).append("\n");
-        incrementErrorCount();
+        incrementASpaceErrorCount();
     }
 
     /**
@@ -2611,10 +2616,10 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @return
      */
     public String getSaveErrorMessages() {
-        int errorsAndWarnings = saveErrorCount - aspaceErrorCount;
+        int errorsAndWarnings = Math.abs(aspaceErrorCount - saveErrorCount);
 
         String errorMessage = "RECORD CONVERSION ERRORS/WARNINGS ( " + errorsAndWarnings + " ) ::\n\n" + errorBuffer.toString() +
-                "\n\n\nRECORD SAVE ERRORS ( " + aspaceErrorCount + " ) ::\n\n" + aspaceClient.getErrorMessages() +
+                "\n\n\nRECORD SAVE ERRORS ( " + saveErrorCount + " ) ::\n\n" + aspaceClient.getErrorMessages() +
                 "\n\nTOTAL COPY TIME: " + stopWatch.getPrettyTime() +
                 "\n\nNUMBER OF RECORDS COPIED: \n" + getTotalRecordsCopiedMessage();
 
@@ -2635,7 +2640,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
         print("\n\nFinish coping data ... Total time: " + stopWatch.getPrettyTime());
         print("\nNumber of Records copied: \n" + totalRecordsCopied);
 
-        print("\nNumber of errors/warnings: " + saveErrorCount);
+        print("\nNumber of errors/warnings: " + aspaceErrorCount);
     }
 
     /**
@@ -2666,12 +2671,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @return
      */
     public String getCurrentProgressMessage() {
-        int errorsAndWarnings = saveErrorCount - aspaceErrorCount;
+        int errorsAndWarnings = Math.abs(aspaceErrorCount - saveErrorCount);
 
         String totalRecordsCopied = getTotalRecordsCopiedMessage();
 
         String errorMessages = "RECORD CONVERSION ERRORS/WARNINGS ( " + errorsAndWarnings + " ) ::\n\n" + errorBuffer.toString() +
-                "\n\n\nRECORD SAVE ERRORS ( " + aspaceErrorCount + " ) ::\n\n" + aspaceClient.getErrorMessages();
+                "\n\n\nRECORD SAVE ERRORS ( " + saveErrorCount + " ) ::\n\n" + aspaceClient.getErrorMessages();
 
         String message = errorMessages +
                 "\n\nRunning for: " + stopWatch.getPrettyTime() +

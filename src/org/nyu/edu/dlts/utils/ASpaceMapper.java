@@ -1249,7 +1249,9 @@ public class ASpaceMapper {
         addMultipartNote(notesJA, "processinfo", "Processing Information", record.getString("ProcessingInfo"));
 
         noteContent = record.getString("BiogHist") + "\n\nNote written by " + record.get("BiogHistAuthor");
-        addMultipartNote(notesJA, "bioghist", "Biographical or Historical Information", noteContent);
+        if(!noteContent.trim().equals("Note written by")) {
+            addMultipartNote(notesJA, "bioghist", "Biographical or Historical Information", noteContent);
+        }
 
         json.put("notes", notesJA);
     }

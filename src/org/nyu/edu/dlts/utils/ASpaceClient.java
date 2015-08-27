@@ -53,6 +53,8 @@ public class ASpaceClient {
     // String that stores the session
     private String session;
 
+    private ASpaceCopyUtil aspaceCopyUtil;
+
     // let keep all the errors we encounter so we can have a log
     private StringBuilder errorBuffer = new StringBuilder();
 
@@ -89,6 +91,15 @@ public class ASpaceClient {
     public ASpaceClient(String host, String session) {
         this.host = host;
         this.session = session;
+    }
+
+    /**
+     * Method to set the aspace copy util
+     *
+     * @param aspaceCopyUtil
+     */
+    public void setASpaceCopyUtil(ASpaceCopyUtil aspaceCopyUtil) {
+        this.aspaceCopyUtil = aspaceCopyUtil;
     }
 
     /**
@@ -254,6 +265,9 @@ public class ASpaceClient {
                 errorBuffer.append("Endpoint: ").append(post.getURI()).append("\n").
                         append("AR Identifier: ").append(arId).append("\n").
                         append("Re-using existing ASpace record: ").append(conflictingUri).append("\n\n");
+
+                aspaceCopyUtil.incrementASpaceErrorCount();
+                aspaceCopyUtil.incrementSaveErrorCount();
             } else {
                 // if it a 500 error the ASpace then we may need to add the JSON text
                 if (statusCode == HttpStatus.SC_INTERNAL_SERVER_ERROR) {

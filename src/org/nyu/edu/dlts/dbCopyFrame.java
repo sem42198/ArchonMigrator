@@ -131,7 +131,6 @@ public class dbCopyFrame extends JFrame {
      * @return
      */
     private String getArchonSession() {
-        // get the connection url for the
         String sourceUrl = getArchonSourceUrl();
 
         // load the source and destinations database connections
@@ -277,9 +276,9 @@ public class dbCopyFrame extends JFrame {
                     ascopy.cleanUp();
 
                     // set the number of errors and message now
-                    String errorCount = "" + ascopy.getSaveErrorCount();
+                    String errorCount = "" + ascopy.getASpaceErrorCount();
                     errorCountLabel.setText(errorCount);
-                    migrationErrors = ascopy.getSaveErrorMessages() + "\n\nTotal errors: " + errorCount;
+                    migrationErrors = ascopy.getSaveErrorMessages() + "\n\nTotal errors/warnings: " + errorCount;
                 } catch (Exception e) {
                     consoleTextArea.setText("Unrecoverable exception, migration stopped ...\n\n");
                     consoleTextArea.append(ascopy.getCurrentRecordInfo() + "\n\n");
@@ -495,6 +494,20 @@ public class dbCopyFrame extends JFrame {
 
     }
 
+    /**
+     * Method to show the url of the selected tracer database
+     *
+     * @param e
+     */
+    private void tracerComboBoxActionPerformed(ActionEvent e) {
+        String tracer = tracerComboBox.getSelectedItem().toString();
+
+        if(useTracerCheckBox.isSelected() && !tracer.equals("tracer")) {
+            String sourceURL = getArchonSourceUrl();
+            sourceTextField.setText(sourceURL);
+        }
+    }
+
     private void initComponents() {
         // JFormDesigner - Component initialization - DO NOT MODIFY  //GEN-BEGIN:initComponents
         // Generated using JFormDesigner non-commercial license
@@ -551,7 +564,7 @@ public class dbCopyFrame extends JFrame {
         CellConstraints cc = new CellConstraints();
 
         //======== this ========
-        setTitle("Archon Data Migrator (v0.3.0 08-19-2015)");
+        setTitle("Archon Data Migrator (v0.4.0D 08-27-2015)");
         Container contentPane = getContentPane();
         contentPane.setLayout(new BorderLayout());
 
@@ -706,6 +719,11 @@ public class dbCopyFrame extends JFrame {
                         "ala",
                         "rbml"
                     }));
+                    tracerComboBox.addActionListener(new ActionListener() {
+                        public void actionPerformed(ActionEvent e) {
+                            tracerComboBoxActionPerformed(e);
+                        }
+                    });
                     tracerPanel.add(tracerComboBox);
                 }
                 contentPanel.add(tracerPanel, cc.xy(1, 13));
@@ -848,7 +866,7 @@ public class dbCopyFrame extends JFrame {
                 buttonBar.add(errorLogButton, cc.xy(2, 1));
 
                 //---- saveErrorsLabel ----
-                saveErrorsLabel.setText(" Errors: ");
+                saveErrorsLabel.setText(" Errors/Warnings: ");
                 buttonBar.add(saveErrorsLabel, cc.xy(4, 1));
 
                 //---- errorCountLabel ----
