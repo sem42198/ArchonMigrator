@@ -1080,7 +1080,8 @@ public class ASpaceMapper {
         /* add field required for archival_object.rb */
 
         // make the ref id unique otherwise ASpace complains
-        String refId = record.getString("ID") + "_SortOrder-" + record.getInt("SortOrder");
+        //String refId = record.getString("ID") + "_SortOrder-" + record.getInt("SortOrder");
+        String refId = record.getString("ID");
         json.put("ref_id", refId);
 
         //String level = "series";

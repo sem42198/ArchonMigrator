@@ -1623,8 +1623,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 // redo the sort order so we don't have any collisions and things are sorted correctly
                 String invalidChildRecordIds = redoComponentSortOrder(parentMap);
                 if(!invalidChildRecordIds.isEmpty()) {
-                    String message = "Invalid Parent/Child Relationship: "  + collectionTitle  +
-                            " :: " + currentRecordIdentifier + "\n Collection Content Ids (" + invalidChildRecordIds + ")\n";
+                    String message = "Invalid Parent/Child Relationship for Collection: "  + collectionTitle  +
+                            " :: " + currentRecordIdentifier + "\nContent Ids (" + invalidChildRecordIds + ")\n";
                     addErrorMessage(message);
                 }
 
@@ -1710,11 +1710,17 @@ public class ASpaceCopyUtil implements  PrintConsole {
                         createInstance(null, containerList, instancesJA, resourceJS.getString("title"));
                     } else {
                         JSONObject parentJS = intellectualComponents.get("" + topParentId);
-                        if(parentJS.has("instances")) {
-                            instancesJA = parentJS.getJSONArray("instances");
-                        }
 
-                        createInstance(null, containerList, instancesJA, parentJS.getString("title"));
+                        if(parentJS != null) {
+                            if (parentJS.has("instances")) {
+                                instancesJA = parentJS.getJSONArray("instances");
+                            }
+
+                            createInstance(null, containerList, instancesJA, parentJS.getString("title"));
+                        } else {
+                            String message = "Unable to locate parent record for instance: " + containerList.get(0) + "\n";
+                            addErrorMessage(message);
+                        }
                     }
                 }
 
@@ -1870,7 +1876,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                     String paddedSortOrder = String.format("%05d", parent.getInt("SortOrder"));
                     componentJS.put("sort_key2", paddedSortOrder);
                 } else {
-                    System.out.println("Adding SInstance");
+                    System.out.println("Adding Analog Instance");
                 }
 
                 // store the container information for this physical only instance

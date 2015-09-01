@@ -502,7 +502,7 @@ public class dbCopyFrame extends JFrame {
     private void tracerComboBoxActionPerformed(ActionEvent e) {
         String tracer = tracerComboBox.getSelectedItem().toString();
 
-        if(useTracerCheckBox.isSelected() && !tracer.equals("tracer")) {
+        if(useTracerCheckBox.isSelected()) {
             String sourceURL = getArchonSourceUrl();
             sourceTextField.setText(sourceURL);
         }
@@ -564,7 +564,7 @@ public class dbCopyFrame extends JFrame {
         CellConstraints cc = new CellConstraints();
 
         //======== this ========
-        setTitle("Archon Data Migrator (v0.4.0D 08-27-2015)");
+        setTitle("Archon Data Migrator (v0.4.0A 09-01-2015)");
         Container contentPane = getContentPane();
         contentPane.setLayout(new BorderLayout());
 
