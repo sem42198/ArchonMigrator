@@ -59,6 +59,9 @@ public class dbCopyFrame extends JFrame {
     public dbCopyFrame(boolean basic) {
         initComponents();
 
+        // hide this check box for now since we not
+        useSaveURIMapsCheckBox.setVisible(false);
+
         if(basic) {
             hideAdvanceFeatures();
         }
@@ -68,25 +71,12 @@ public class dbCopyFrame extends JFrame {
      * Method to hide advance UI features to make it easier for users to run the tool
      */
     private void hideAdvanceFeatures() {
-        //apiLabel.setVisible(false);
-        sourceLabel.setVisible(false);
-        sourceTextField.setVisible(false);
-        //threadLabel.setVisible(false);
-        //threadsTextField.setVisible(false);
-        //repositoryCheckButton.setVisible(false);
-        //copyRecordCheckBox.setVisible(false);
-        //viewRepositoryCheckReportButton.setVisible(false);
-        adminLabel.setVisible(false);
-        adminTextField.setVisible(false);
         tracerPanel.setVisible(false);
-        //useSaveURIMapsCheckBox.setVisible(false);
         simulateCheckBox.setVisible(false);
         deleteResourcesCheckBox.setVisible(false);
         numResourceToCopyLabel.setVisible(false);
         numResourceToCopyTextField.setVisible(false);
         deleteResourcesCheckBox.setVisible(false);
-        resourcesToCopyLabel.setVisible(false);
-        resourcesToCopyTextField.setVisible(false);
         recordURIComboBox.setVisible(false);
         paramsLabel.setVisible(false);
         paramsTextField.setVisible(false);
@@ -97,14 +87,11 @@ public class dbCopyFrame extends JFrame {
     }
 
     /**
-     * Close this window, and only exit if we are running in stand alone mode
+     * Close this window, and only exit if we are running in standalone mode
      */
     private void okButtonActionPerformed() {
         setVisible(false);
-
-        if (!isBasicUI) {
-            System.exit(0);
-        }
+        System.exit(0);
     }
 
     /**
@@ -247,7 +234,6 @@ public class dbCopyFrame extends JFrame {
                         ascopy.saveURIMaps();
                     }
 
-
                     // get the number of resources to copy here to allow it to be reset while the migration
                     // has been started, but migration of resources has not yet started
                     int collectionsToCopy = 1000000;
@@ -295,7 +281,7 @@ public class dbCopyFrame extends JFrame {
 
     /**
      * Method to verify that the directory selected for download files those exists and is
-     * writetable
+     * writerable
      *
      * @return
      */
@@ -564,7 +550,7 @@ public class dbCopyFrame extends JFrame {
         CellConstraints cc = new CellConstraints();
 
         //======== this ========
-        setTitle("Archon Data Migrator (v0.4.0A 09-01-2015)");
+        setTitle("Archon Data Migrator (v0.5.0 09-10-2015)");
         Container contentPane = getContentPane();
         contentPane.setLayout(new BorderLayout());
 
@@ -778,6 +764,7 @@ public class dbCopyFrame extends JFrame {
 
                 //---- resourcesToCopyTextField ----
                 resourcesToCopyTextField.setText("-bbcode_html");
+                resourcesToCopyTextField.setColumns(40);
                 contentPanel.add(resourcesToCopyTextField, cc.xywh(5, 19, 7, 1));
 
                 //---- outputConsoleLabel ----
@@ -971,7 +958,13 @@ public class dbCopyFrame extends JFrame {
      * Main method for testing in stand alone mode
      */
     public static void main(String[] args) {
-        dbCopyFrame frame = new dbCopyFrame(false);
+        dbCopyFrame frame;
+        if(args.length != 0 && args[0].equals("advance")) {
+            frame = new dbCopyFrame(false);
+        } else {
+            frame = new dbCopyFrame(true);
+        }
+
         frame.pack();
         frame.setVisible(true);
     }

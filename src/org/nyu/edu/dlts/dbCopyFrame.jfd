@@ -14,7 +14,7 @@
       </object>
       <void method="setProperty">
        <string>title</string>
-       <string>Archon Data Migrator (v0.4.0A 09-01-2015)</string>
+       <string>Archon Data Migrator (v0.5.0 09-10-2015)</string>
       </void>
       <void method="add">
        <object class="com.jformdesigner.model.FormContainer">
@@ -821,6 +821,10 @@
             <void method="setProperty">
              <string>text</string>
              <string>-bbcode_html</string>
+            </void>
+            <void method="setProperty">
+             <string>columns</string>
+             <int>40</int>
             </void>
             <void property="name">
              <string>resourcesToCopyTextField</string>
