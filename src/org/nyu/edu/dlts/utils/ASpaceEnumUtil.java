@@ -145,6 +145,17 @@ public class ASpaceEnumUtil {
     }
 
     /**
+     * Method to map the Archon country code to a name
+     *
+     * @param arID
+     * @return
+     */
+    public String getASpaceCountryCode(int arID) {
+        String key = "country_" + arID;
+        return getEnumValueForID(key, "US");
+    }
+
+    /**
      * Method to map the subject source
      *
      * @param arID
@@ -331,7 +342,7 @@ public class ASpaceEnumUtil {
     }
 
     /**
-     * Method initASpaceiate the array the hold information on dates
+     * Method init ASpace the array the hold information on dates
      */
     private void initASpaceDateEnums() {
         ASpaceDateEnums = new String[] {

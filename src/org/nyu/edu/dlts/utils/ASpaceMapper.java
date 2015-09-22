@@ -209,16 +209,16 @@ public class ASpaceMapper {
         contactsJS.put("city", repository.get("City"));
 
         // add the country and country code together
-        String country = "Country Code "  + repository.get("CountryID");
-        contactsJS.put("country", country);
+        contactsJS.put("country", enumUtil.getASpaceCountryCode(repository.getInt("CountryID")));
 
         String postCode = repository.get("ZIPCode") + "-" + repository.get("ZIPPlusFour");
         contactsJS.put("post_code", postCode);
 
-        String phone = repository.get("Phone") + " ext " + repository.get("PhoneExtension");
-        contactsJS.put("telephone", phone);
-        contactsJS.put("fax", repository.get("Fax"));
+        addPhoneNumbers(contactsJS, repository.getString("Phone"), repository.getString("PhoneExtension"),
+                repository.getString("Fax"));
+
         contactsJS.put("email", repository.get("Email"));
+        contactsJS.put("email_signature", repository.get("EmailSignature"));
 
         contactsJA.put(contactsJS);
         agentJS.put("agent_contacts", contactsJA);
@@ -236,7 +236,35 @@ public class ASpaceMapper {
     }
 
     /**
-     * Method to convert an AT subject record to
+     * Method to add the telephone and fax numbers to an agent contact information
+     *
+     * @param contactsJS
+     * @param telephone
+     * @param fax
+     */
+    private void addPhoneNumbers(JSONObject contactsJS, String telephone, String ext, String fax) throws JSONException {
+        JSONArray telephonesJA = new JSONArray();
+
+        if (telephone != null && !telephone.isEmpty()) {
+            JSONObject phoneJS = new JSONObject();
+            phoneJS.put("number", telephone);
+            phoneJS.put("ext", ext);
+            phoneJS.put("number_type", "business");
+            telephonesJA.put(phoneJS);
+        }
+
+        if (fax != null && !fax.isEmpty()) {
+            JSONObject phoneJS = new JSONObject();
+            phoneJS.put("number", fax);
+            phoneJS.put("number_type", "fax");
+            telephonesJA.put(phoneJS);
+        }
+
+        contactsJS.put("telephones", telephonesJA);
+    }
+
+    /**
+     * Method to convert an Archon repository record
      *
      * @param record
      * @return
