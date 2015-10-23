@@ -335,6 +335,8 @@ public class ASpaceMapper {
 
         json.put("vocabulary", vocabularyURI);
 
+        json.put("publish", true);
+
         json.put("source", enumUtil.getASpaceSubjectSource(record.getInt("SubjectSourceID")));
 
         // add the terms
@@ -386,6 +388,8 @@ public class ASpaceMapper {
         addExternalId(record, agentJS, "creator");
 
         agentJS.put("vocabulary", vocabularyURI);
+
+        agentJS.put("publish", true);
 
         // hold name information
         JSONArray namesJA = new JSONArray();
@@ -440,8 +444,26 @@ public class ASpaceMapper {
                 return null;
         }
 
-        // add the names array and names json objects to main record
+        // add the names array and names json objects to main record, including any alternative name
         namesJA.put(namesJS);
+
+        if(record.has("NameVariants") && !record.getString("NameVariants").isEmpty()) {
+            String nameVariant = record.getString("NameVariants");
+
+            JSONObject namesVariantJS = new JSONObject();
+
+            namesVariantJS.put("name_order", "direct");
+            namesVariantJS.put("source", namesJS.get("source"));
+            namesVariantJS.put("sort_name", nameVariant);
+
+            if(namesJS.has("primary_name")) {
+                namesVariantJS.put("primary_name", nameVariant);
+            } else {
+                namesVariantJS.put("family_name", nameVariant);
+            }
+
+            namesJA.put(namesVariantJS);
+        }
 
         agentJS.put("names", namesJA);
 
@@ -518,6 +540,8 @@ public class ASpaceMapper {
             json.put("jsonmodel_type", "classification");
         } else {
             json.put("jsonmodel_type", "classification_term");
+            /*TODO 10/8/2015 Below code causes bug in ASpace v1.4.0*/
+            //json.put("position", record.getInt("Position"));
         }
 
         json.put("identifier", record.get("ClassificationIdentifier"));
@@ -897,9 +921,11 @@ public class ASpaceMapper {
 
         // get the ids and make them unique if we in DEBUG mode
         String id_0 = record.getString("CollectionIdentifier");
+        Integer classificationID = record.getInt("ClassificationID");
 
-        if(id_0.isEmpty()) {
-            id_0 = record.getString("ClassificationID");
+        if(classificationID != 0) {
+            System.out.println("Classification ID: " + classificationID);
+            //id_0 = classificationID;
         }
 
         // now make sure we don't already have this ID

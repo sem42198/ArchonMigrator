@@ -174,8 +174,8 @@ public class dbCopyFrame extends JFrame {
                     // check the current aspace version to make sure
                     String aspaceVersion = ascopy.getASpaceVersion();
 
-                    if (!aspaceVersion.isEmpty() && !aspaceVersion.contains(ASpaceCopyUtil.SUPPORTED_ASPACE_VERSION)) {
-                        String message = "Unsupported Archivesspace Version\nSupport Version: " +
+                    if (!aspaceVersion.isEmpty() && !ASpaceCopyUtil.SUPPORTED_ASPACE_VERSION.contains(aspaceVersion)) {
+                        String message = "Unsupported Archivesspace Version\nSupport Versions: " +
                                 ASpaceCopyUtil.SUPPORTED_ASPACE_VERSION + " ...\n";
 
                         consoleTextArea.append(message);
@@ -550,7 +550,7 @@ public class dbCopyFrame extends JFrame {
         CellConstraints cc = new CellConstraints();
 
         //======== this ========
-        setTitle("Archon Data Migrator (v0.5.0 09-10-2015)");
+        setTitle("Archon Data Migrator v0.5.0 (10-22-2015)");
         Container contentPane = getContentPane();
         contentPane.setLayout(new BorderLayout());
 
@@ -604,7 +604,7 @@ public class dbCopyFrame extends JFrame {
                     }));
 
                 //---- apiLabel ----
-                apiLabel.setText("  Archives Space Version: v1.3.0");
+                apiLabel.setText("  Archives Space Version: v1.4.0");
                 apiLabel.setHorizontalTextPosition(SwingConstants.CENTER);
                 contentPanel.add(apiLabel, cc.xy(1, 1));
 

@@ -23,6 +23,7 @@ import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.TreeMap;
 
 /**
  * Created by IntelliJ IDEA.
@@ -409,7 +410,6 @@ public class ArchonClient {
             }
 
             // now go through the records and gather all children into an array
-             // now we need to go through the child records and organize by parent records
             HashMap<String, JSONArray> childrenMap = new HashMap<String, JSONArray>();
 
             for(String key: recordsMap.keySet()) {
@@ -439,6 +439,7 @@ public class ArchonClient {
             for(JSONObject recordJS: classificationList) {
                 String id = recordJS.getString("ID");
                 if(childrenMap.containsKey(id)) {
+                    sortCollectionItems(childrenMap.get(id));
                     recordJS.put("children", childrenMap.get(id));
                 } else {
                     recordJS.put("children", new JSONArray());
@@ -451,6 +452,27 @@ public class ArchonClient {
         } catch (Exception e) {
             e.printStackTrace();
             return null;
+        }
+    }
+
+    /**
+     * Method used to assign the position value for collection children
+     * @param childrenJA
+     */
+    private void sortCollectionItems(JSONArray childrenJA) throws JSONException {
+        TreeMap<String, JSONObject> treeMap = new TreeMap<String, JSONObject>();
+
+        // first put all the children in a tree map so they get sorted
+        for(int i = 0; i < childrenJA.length(); i++) {
+            JSONObject childJS = childrenJA.getJSONObject(i);
+            String key = childJS.get("ParentID") + "-" + childJS.get("ClassificationIdentifier");
+            treeMap.put(key, childJS);
+        }
+
+        // now process the now sorted children and add a position value
+        int position = 1;
+        for(JSONObject childJS: treeMap.values()) {
+            childJS.put("Position", position++);
         }
     }
 

@@ -53,6 +53,7 @@ public class ASpaceClient {
     // String that stores the session
     private String session;
 
+    // used to increment the error count
     private ASpaceCopyUtil aspaceCopyUtil;
 
     // let keep all the errors we encounter so we can have a log
