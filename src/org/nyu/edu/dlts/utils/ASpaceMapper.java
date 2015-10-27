@@ -52,6 +52,9 @@ public class ASpaceMapper {
 
     // date formatter used to convert date string to date object
     SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMdd");
+    SimpleDateFormat simpleDateFormat2 = new SimpleDateFormat("yyyyddMM");
+    SimpleDateFormat humanDateFormat = new SimpleDateFormat("MM/dd/yyyy");
+
 
     // booleans used to convert some bbcode to html or blanks
     private boolean bbcodeToHTML = false;
@@ -602,7 +605,7 @@ public class ASpaceMapper {
         json.put("general_note", record.get("Comments"));
 
         if(record.has("MaterialTypeID")) {
-            json.put("resource_type", enumUtil.getASpaceResourceType(record.has("MaterialTypeID")));
+            json.put("resource_type", enumUtil.getASpaceResourceType(record.getString("MaterialTypeID")));
         }
 
         /* add linked records (extents, dates, rights statement)*/
@@ -885,10 +888,11 @@ public class ASpaceMapper {
      * Method to convert an collection record to json ASpace JSON
      *
      * @param record
+     * @param classificationIdPartsMap
      * @return
      * @throws Exception
      */
-    public JSONObject convertCollection(JSONObject record) throws Exception {
+    public JSONObject convertCollection(JSONObject record, HashMap<String, String> classificationIdPartsMap) throws Exception {
         // Main json object
         JSONObject json = new JSONObject();
 
@@ -920,28 +924,44 @@ public class ASpaceMapper {
         /* Add fields needed for resource.rb */
 
         // get the ids and make them unique if we in DEBUG mode
-        String id_0 = record.getString("CollectionIdentifier");
-        Integer classificationID = record.getInt("ClassificationID");
+        String id = record.getString("CollectionIdentifier");
+        String classificationID = record.getString("ClassificationID");
 
-        if(classificationID != 0) {
+        if(!classificationID.equals("0")) {
             System.out.println("Classification ID: " + classificationID);
-            //id_0 = classificationID;
+            String[] sa = classificationIdPartsMap.get(classificationID).split("/");
+
+            // this can be placed in a loop but lets keep it nice an clear?
+            if(sa.length == 1) {
+                json.put("id_0", sa[0]);
+                json.put("id_1", id);
+            } else if(sa.length == 2) {
+                json.put("id_0", sa[0]);
+                json.put("id_1", sa[1]);
+                json.put("id_2", id);
+            } else if (sa.length == 3) {
+                json.put("id_0", sa[0]);
+                json.put("id_1", sa[1]);
+                json.put("id_2", sa[2]);
+                json.put("id_3", id);
+            }
+        } else {
+            json.put("id_0", id);
         }
 
         // now make sure we don't already have this ID
-        String id_1 = getUniqueID(ASpaceClient.RESOURCE_ENDPOINT, id_0, title);
+        //String id_1 = getUniqueID(ASpaceClient.RESOURCE_ENDPOINT, id_0, title);
 
         if(makeUnique) {
-            id_0 = randomStringLong.nextString();
+            json.put("id_0", randomStringLong.nextString());
         }
-
-        json.put("id_0", id_0);
-        json.put("id_1", id_1);
 
         // get the level
         json.put("level", "collection");
 
-        json.put("resource_type", "papers"); // should be mapped correctly
+        if(record.has("MaterialTypeID")) {
+            json.put("resource_type", enumUtil.getASpaceResourceType(record.getString("MaterialTypeID")));
+        }
 
         // set the publish, restrictions, processing note, container summary
         json.put("publish", convertToBoolean(record.getInt("Enabled")));
@@ -952,7 +972,7 @@ public class ASpaceMapper {
         json.put("ead_id", getUniqueID("ead", "Archon EAD", title));
         json.put("ead_location", "Archon Finding Aid location");
         json.put("finding_aid_title", "Archon Finding Aid Title");
-        json.put("finding_aid_date", record.get("PublicationDate"));
+        json.put("finding_aid_date", getHumanReadableDate(record.getString("PublicationDate")));
         json.put("finding_aid_author", record.get("FindingAidAuthor"));
 
         Integer descriptiveRulesID = record.getInt("DescriptiveRulesID");
@@ -967,6 +987,9 @@ public class ASpaceMapper {
         //json.put("finding_aid_revision_date", record.getRevisionDate());
         //json.put("finding_aid_revision_description", record.getRevisionDescription());
         json.put("finding_aid_note", record.get("PublicationNote"));
+
+        // add any reversion statements
+        addRevisionStatement(record, json);
 
         // add the notes
         addResourceNotes(record, json);
@@ -1079,7 +1102,11 @@ public class ASpaceMapper {
 
             dateJS.put("label", "other");
 
+            // convert date to human readable format
+            acquisitionDate = getHumanReadableDate(acquisitionDate);
+
             dateExpression = "Date acquired: " + acquisitionDate;
+
             dateJS.put("expression", dateExpression);
 
             dateJA.put(dateJS);
@@ -1101,6 +1128,25 @@ public class ASpaceMapper {
         }
 
         json.put("dates", dateJA);
+    }
+
+    /**
+     * Add a revision statement to the resource record
+     * @param json
+     * @param record
+     */
+    private void addRevisionStatement(JSONObject record, JSONObject json) throws JSONException {
+        String revisionHistory = record.getString("RevisionHistory");
+        if(revisionHistory.isEmpty()) return;
+
+        JSONObject revisionStatementJS = new JSONObject();
+        revisionStatementJS.put("date", "09099999");
+        revisionStatementJS.put("description", revisionHistory);
+
+        JSONArray revisionStatementsJA = new JSONArray();
+        revisionStatementsJA.put(revisionStatementJS);
+
+        json.put("revision_statements", revisionStatementsJA);
     }
 
     /**
@@ -1216,6 +1262,7 @@ public class ASpaceMapper {
         JSONArray externalDocumentsJA = new JSONArray();
 
         JSONObject documentJS = new JSONObject();
+        documentJS.put("publish", true);
         documentJS.put("title", title);
         documentJS.put("location", fixUrl(location));
         externalDocumentsJA.put(documentJS);
@@ -1740,6 +1787,30 @@ public class ASpaceMapper {
         } catch (ParseException e) {
             e.printStackTrace();
             return null;
+        }
+    }
+
+    /**
+     * Method to return the date if the format is not checked
+     *
+     * @param dateString
+     * @return
+     */
+    private String getHumanReadableDate(String dateString) {
+        Date date = null;
+
+        try {
+            date = simpleDateFormat.parse(dateString);
+        } catch (ParseException e) { }
+
+        try {
+            date = simpleDateFormat2.parse(dateString);
+        } catch (ParseException e) { }
+
+        if(date != null) {
+            return humanDateFormat.format(date);
+        } else {
+            return dateString;
         }
     }
 

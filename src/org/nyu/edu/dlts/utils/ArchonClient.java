@@ -417,10 +417,12 @@ public class ArchonClient {
 
                 // first check to see if this is not a parent, if it is then continue
                 if(recordJS.getString("ParentID").equals("0")) {
+                    // store the identifier to make lookup easy when we need it for collection ID
+                    recordJS.put("id_parts", recordJS.get("ClassificationIdentifier"));
                     continue;
                 }
 
-                String parentID = getRootParent(recordsMap, recordJS);
+                String parentID = getRootParent(recordsMap, recordJS, recordJS);
 
                 // add the component json object to the hash map now
                 if(childrenMap.containsKey(parentID)) {
@@ -482,12 +484,23 @@ public class ArchonClient {
      * @param recordJS
      * @return
      */
-    private String getRootParent(HashMap<String, JSONObject> recordsMap, JSONObject recordJS) throws Exception {
+    private String getRootParent(HashMap<String, JSONObject> recordsMap, JSONObject recordJS, JSONObject classificationTermJS) throws Exception {
         if(recordJS.getString("ParentID").equals("0")) {
+            String idParts = classificationTermJS.get("id_parts") + "/" + recordJS.get("id_parts");
+            classificationTermJS.put("id_parts", idParts);
+
             return recordJS.getString("ID");
         } else {
+            if(!classificationTermJS.has("id_parts")) {
+                classificationTermJS.put("id_parts", recordJS.get("ClassificationIdentifier"));
+            } else {
+                String idParts = classificationTermJS.get("ClassificationIdentifier") + "/" + recordJS.get("ClassificationIdentifier");
+                classificationTermJS.put("id_parts", idParts);
+            }
+
             JSONObject parentJS = recordsMap.get(recordJS.getString("ParentID"));
-            return getRootParent(recordsMap, parentJS);
+
+            return getRootParent(recordsMap, parentJS, classificationTermJS);
         }
     }
 

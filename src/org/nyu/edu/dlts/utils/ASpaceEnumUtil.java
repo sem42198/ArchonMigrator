@@ -218,7 +218,7 @@ public class ASpaceEnumUtil {
      * @param arID
      * @return
      */
-    public String getASpaceResourceType(boolean arID) {
+    public String getASpaceResourceType(String arID) {
         String key = "resource_type_" + arID;
         return getEnumValueForID(key, "records");
     }

@@ -67,6 +67,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
     // hashmap that maps classification term from old database with copy in new database
     private HashMap<String, String> classificationTermURIMap = new HashMap<String, String>();
 
+    // hashmap that maps classification and classification term ids to make it easy to construct
+    private HashMap<String, String> classificationIdPartsMap = new HashMap<String, String>();
+
     // hashset to keep track of classifications ids which have been linked to a record
     // so un-liked classifications can be clean deleted
     private HashSet<String> linkedClassificationSet = new HashSet<String>();
@@ -1031,6 +1034,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
             ArrayList<String> classificationTermURIs = new ArrayList<String>();
             JSONArray classificationChildren = classification.getJSONArray("children");
 
+            // add the id for this classification
+            classificationIdPartsMap.put(arId, classification.getString("id_parts"));
+
             for (int i = 0; i < classificationChildren.length(); i++) {
                 if (stopCopy) return 0;
 
@@ -1044,6 +1050,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                 String classificationTermURI = repoURI + ASpaceClient.CLASSIFICATION_TERM_ENDPOINT + "/" + cId;
                 classificationTermURIs.add(classificationTermURI);
+
+                classificationIdPartsMap.put(cId, classificationTerm.getString("id_parts"));
 
                 if (classificationTermJS != null) {
                     classificationTermJS.put("uri", classificationTermURI);
@@ -1580,7 +1588,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
             print("Copying Collection: " + collectionTitle + " ,DB_ID: " + dbId);
 
             // get the main json object
-            JSONObject resourceJS = mapper.convertCollection(collection);
+            JSONObject resourceJS = mapper.convertCollection(collection, classificationIdPartsMap);
 
             if (resourceJS != null) {
                 String repoURI = getRepositoryURI(repositoryID);
