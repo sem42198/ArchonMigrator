@@ -1,9 +1,11 @@
 package org.nyu.edu.dlts.utils;
 
+import org.apache.commons.io.IOUtils;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 
@@ -16,9 +18,7 @@ import java.util.HashMap;
  * Time: 9:52 AM
  */
 public class ASpaceEnumUtil {
-    private HashMap<String, String> languageCodes;
-
-    private ArrayList<String> aspaceLanguageCodes = new ArrayList<String>();
+    private JSONObject languagesJS;
 
     private ArrayList<String> aspaceSalutations = new ArrayList<String>();
 
@@ -84,13 +84,22 @@ public class ASpaceEnumUtil {
         initASpaceInstanceContainerTypes();
         initASpaceAcquisitionTypes();
         initASpaceAccessionResourceTypes();
+
+        loadLanguageCodes();
     }
 
     /**
-     * Method to set the language code hash map
+     * Method to load the language codes
      */
-    public void setLanguageCodes(HashMap<String, String> languageCodes) {
-        this.languageCodes = languageCodes;
+    private void loadLanguageCodes() {
+        try {
+            String text = IOUtils.toString(this.getClass().getResourceAsStream("../resources/languages.json"), "UTF-8");
+            languagesJS = new JSONObject(text);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -531,24 +540,21 @@ public class ASpaceEnumUtil {
     /**
      * Method to return the aspace language code
      *
-     * @param atValue
+     * @param arId
      * @return
      */
-    public String getASpaceLanguageCode(String atValue) {
-        if(atValue == null || atValue.isEmpty()) return "und";
+    public String getASpaceLanguageCode(String arId) {
+        if(arId.isEmpty()) return "und";
 
-        if(languageCodes.containsKey(atValue)) {
-            String code = languageCodes.get(atValue);
-
-            // in the sandbox database the language code is all messed up, so we need
-            // to use the default Undetermined code "und" instead
-            if(code != null && aspaceLanguageCodes.contains(code)) {
-                return code;
-            } else {
+        if(languagesJS.has(arId)) {
+            try {
+                JSONObject languageJS = languagesJS.getJSONObject(arId);
+                return languageJS.getString("LanguageShort");
+            } catch (JSONException e) {
                 return "und";
             }
         } else {
-            return UNMAPPED;
+            return "und";
         }
     }
 
@@ -1293,5 +1299,10 @@ public class ASpaceEnumUtil {
         } else {
             return defaultValue;
         }
+    }
+
+    // used for testing
+    public static void main(String[] args) {
+        ASpaceEnumUtil enumUtil = new ASpaceEnumUtil();
     }
 }

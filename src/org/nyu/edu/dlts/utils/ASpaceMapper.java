@@ -964,7 +964,8 @@ public class ASpaceMapper {
         }
 
         // set the publish, restrictions, processing note, container summary
-        json.put("publish", convertToBoolean(record.getInt("Enabled")));
+        publishRecord = convertToBoolean(record.getInt("Enabled"));
+        json.put("publish", publishRecord);
 
         json.put("container_summary", "Archon Container Summary");
 
@@ -980,12 +981,7 @@ public class ASpaceMapper {
             json.put("finding_aid_description_rules", enumUtil.getASpaceFindingAidDescriptionRule(descriptiveRulesID));
         }
 
-        json.put("finding_aid_language", record.get("FindingLanguageID"));
-        //json.put("finding_aid_sponsor", record.getSponsorNote());
-        //json.put("finding_aid_edition_statement", record.getEditionStatement());
-        //json.put("finding_aid_series_statement", record.getSeries());
-        //json.put("finding_aid_revision_date", record.getRevisionDate());
-        //json.put("finding_aid_revision_description", record.getRevisionDescription());
+        json.put("finding_aid_language", enumUtil.getASpaceLanguageCode(record.getString("FindingLanguageID")));
         json.put("finding_aid_note", record.get("PublicationNote"));
 
         // add any reversion statements
@@ -1378,8 +1374,8 @@ public class ASpaceMapper {
             Iterator<String> keys = recordNotes.keys();
             while(keys.hasNext()) {
                 JSONObject note = recordNotes.getJSONObject(keys.next());
-                if(note.has("Title")) {
-                    addMultipartNote(notesJA, "odd", note.getString("Title"), note.getString("Content"));
+                if(note.has("NoteType")) {
+                    addMultipartNote(notesJA, note.getString("NoteType"), note.getString("Label"), note.getString("Content"));
                 }
             }
         }

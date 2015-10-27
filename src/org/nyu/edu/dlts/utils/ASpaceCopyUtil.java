@@ -640,6 +640,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
             // to an agent record instead
             if((subjectTypeID == 3 || subjectTypeID == 8 || subjectTypeID == 10) && subject.getInt("ParentID") == 0) {
                 subjectToAgentList.add(subject);
+                subjectURIMap.put(arId, "agent");
                 success++;
             } else {
                 JSONObject json = mapper.convertSubject(subject);
@@ -923,6 +924,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
             String sortName = subject.getString("Subject");
             String key = "subject_"  + subject.get("ID");
 
+            subject.put("ID", key);
             subject.put("Name", sortName);
             subject.put("CreatorSourceID", 99); // this will get set to local
 
@@ -1596,10 +1598,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 String batchEndpoint = repoURI + ASpaceClient.BATCH_IMPORT_ENDPOINT;
 
                 // add the subjects
-                addSubjects(resourceJS, collection.getJSONArray("Subjects"), collectionTitle);
+                ArrayList<String> subjectAsCreatorsList = addSubjects(resourceJS, collection.getJSONArray("Subjects"), collectionTitle);
 
                 // add the linked agents aka Names records
-                addCreators(resourceJS, collection.getJSONArray("Creators"), collectionTitle);
+                JSONArray linkedAgentsJA = addCreators(resourceJS, collection.getJSONArray("Creators"), collectionTitle);
+
+                // linked subjects which are creators as agents
+                addSubjectsAsCreators(linkedAgentsJA, subjectAsCreatorsList, collectionTitle);
 
                 // add any linked classifications
                 String classificationId = collection.getString("ClassificationID");
@@ -1673,10 +1678,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
                             }
 
                             // add the subjects now
-                            addSubjects(componentJS, component.getJSONArray("Subjects"), title);
+                            subjectAsCreatorsList = addSubjects(componentJS, component.getJSONArray("Subjects"), title);
 
                             // add the linked agents aka Names records
-                            addCreators(componentJS, component.getJSONArray("Creators"), title);
+                            linkedAgentsJA = addCreators(componentJS, component.getJSONArray("Creators"), title);
+
+                            // linked subjects which are creators as agents
+                            addSubjectsAsCreators(linkedAgentsJA, subjectAsCreatorsList, title);
 
                             // add the instances
                             addInstances(createdInstances, containerList, component, componentJS, title);
@@ -2021,7 +2029,14 @@ public class ASpaceCopyUtil implements  PrintConsole {
      */
     private void addComponentToParentMap(HashMap<String, JSONObject> parentMap, int parentId, JSONObject componentJS) throws Exception {
         String key  = "parent_" + parentId;
-        String sort_key = componentJS.getString("sort_key2") + "_" + componentJS.getString("sort_key1");
+
+        String sort_key = "";
+        if(!componentJS.getString("sort_key2").isEmpty()) {
+            sort_key = componentJS.getString("sort_key2") + "_" + componentJS.getString("sort_key1");
+        } else {
+            sort_key = componentJS.getString("sort_key1");
+        }
+
         JSONObject childrenJS = new JSONObject();
 
         if(parentMap.containsKey(key)) {
@@ -2048,12 +2063,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             System.out.println("Redo sort order for: " + key + " number of children: " + childrenJS.length());
 
-            int i = 1;
+            int i = 0;
             Iterator<String> keys = childrenJS.sortedKeys();
             while(keys.hasNext()) {
-                JSONObject componentJS = childrenJS.getJSONObject(keys.next());
-                componentJS.put("position", i);
-                i++;
+                String childKey = keys.next();
+                JSONObject componentJS = childrenJS.getJSONObject(childKey);
+                System.out.println("sort Key: " + childKey);
+                componentJS.put("position", i++);
 
                 String id = getIdFromURI(componentJS.getString("uri"));
                 if(key.equals("parent_0")) {
@@ -2064,7 +2080,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
             }
         }
 
-        // let verify if we have parent
+        // lets verify if we have a valid parent
         return verifyChildParentRelationship(topLevelParentList, childrenMap).trim();
     }
 
@@ -2119,7 +2135,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param recordTitle The record parent record title
      * @throws Exception
      */
-    private void addSubjects(JSONObject json, JSONArray subjectIds, String recordTitle) throws Exception {
+    private ArrayList<String> addSubjects(JSONObject json, JSONArray subjectIds, String recordTitle) throws Exception {
+        ArrayList<String> subjectAsCreatorsList = new ArrayList<String>();
         JSONArray subjectsJA = new JSONArray();
 
         for (int i = 0; i < subjectIds.length(); i++) {
@@ -2127,9 +2144,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
             String subjectURI = subjectURIMap.get(id);
 
             if (subjectURI != null) {
-                subjectsJA.put(mapper.getReferenceObject(subjectURI));
-
-                if (debug) print("Added subject to " + recordTitle);
+                if(!subjectURI.equals("agent")) {
+                    subjectsJA.put(mapper.getReferenceObject(subjectURI));
+                    if (debug) print("Added subject to " + recordTitle);
+                } else {
+                    subjectAsCreatorsList.add("subject_" + id);
+                }
             } else {
                 print("No mapped subject found ...");
             }
@@ -2139,6 +2159,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
         if (subjectsJA.length() != 0) {
             json.put("subjects", subjectsJA);
         }
+
+        return subjectAsCreatorsList;
     }
 
     /**
@@ -2190,6 +2212,29 @@ public class ASpaceCopyUtil implements  PrintConsole {
         json.put("linked_agents", linkedAgentsJA);
 
         return linkedAgentsJA;
+    }
+
+    /**
+     * Method to add subjects which are really creators
+     * @param linkedAgentsJA
+     * @param subjectAsCreatorsList
+     */
+    private void addSubjectsAsCreators(JSONArray linkedAgentsJA, ArrayList<String> subjectAsCreatorsList, String recordTitle) throws JSONException {
+        for (String id: subjectAsCreatorsList) {
+            String nameURI = nameURIMap.get(id);
+
+            if (nameURI != null) {
+                JSONObject linkedAgentJS = new JSONObject();
+
+                linkedAgentJS.put("role", "subject");
+                linkedAgentJS.put("ref", nameURI);
+                linkedAgentsJA.put(linkedAgentJS);
+
+                if (debug) print("Added creator to " + recordTitle);
+            } else {
+                print("No mapped name found ...");
+            }
+        }
     }
 
     /**
@@ -2948,13 +2993,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 recordTotals = (ArrayList<String>)uriMap.get(RECORD_TOTAL_KEY);
             }
 
-            /* load the caches resource records
-            String key = archonClient.getHost() + ArchonClient.COLLECTION_ENDPOINT;
-            if(uriMap.containsKey(key)) {
-                String jsonText = (String)uriMap.get(key);
-                cachedCollectionsJS = new JSONObject(jsonText);
-            }*/
-
             print("Loaded URI Maps");
         } catch (Exception e) {
             print("Unable to load URI map file: " + uriMapFile.getName());
@@ -3055,8 +3093,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         archonClient.getSession();
 
-        ASpaceCopyUtil aspaceCopyUtil  = new ASpaceCopyUtil(archonClient, "http://54.227.35.51:8089", "admin", "admin");
-        aspaceCopyUtil.setSimulateRESTCalls(true);
+        ASpaceCopyUtil aspaceCopyUtil  = new ASpaceCopyUtil(archonClient, "http://54.227.35.51:9389", "admin", "admin");
+        aspaceCopyUtil.setSimulateRESTCalls(false);
         aspaceCopyUtil.getSession();
         aspaceCopyUtil.setBBCodeOption("-bbcode_html");
 
