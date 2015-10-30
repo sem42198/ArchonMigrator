@@ -1,5 +1,6 @@
 package org.nyu.edu.dlts.utils;
 
+import org.apache.commons.lang.WordUtils;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -574,7 +575,7 @@ public class ASpaceMapper {
         String title = fixEmptyString(record.getString("Title"), null);
 
         String id_0 = record.getString("Identifier");
-        String id_1 = getUniqueID(ASpaceClient.ACCESSION_ENDPOINT, id_0, title);
+        String id_1 = getUniqueID(ASpaceClient.ACCESSION_ENDPOINT, id_0, null, title);
 
         if (makeUnique) {
             id_0 = randomStringLong.nextString();
@@ -762,7 +763,7 @@ public class ASpaceMapper {
         addFileVersion(fileVersionsJA, record, "Digital Object");
         json.put("file_versions", fileVersionsJA);
 
-        json.put("digital_object_id", getUniqueID(ASpaceClient.DIGITAL_OBJECT_ENDPOINT, record.getString("Identifier"), title));
+        json.put("digital_object_id", getUniqueID(ASpaceClient.DIGITAL_OBJECT_ENDPOINT, record.getString("Identifier"), null, title));
 
         // set the digital object type
         json.put("digital_object_type", "mixed_materials");
@@ -926,6 +927,7 @@ public class ASpaceMapper {
         // get the ids and make them unique if we in DEBUG mode
         String id = record.getString("CollectionIdentifier");
         String classificationID = record.getString("ClassificationID");
+        String[] idParts = new String[]{"", "", "", ""};
 
         if(!classificationID.equals("0")) {
             System.out.println("Classification ID: " + classificationID);
@@ -933,28 +935,37 @@ public class ASpaceMapper {
 
             // this can be placed in a loop but lets keep it nice an clear?
             if(sa.length == 1) {
-                json.put("id_0", sa[0]);
-                json.put("id_1", id);
+                idParts[0] = sa[0];
+                idParts[1]  = id;
             } else if(sa.length == 2) {
-                json.put("id_0", sa[0]);
-                json.put("id_1", sa[1]);
-                json.put("id_2", id);
+                idParts[0] = sa[0];
+                idParts[1] = sa[1];
+                idParts[2] = id;
             } else if (sa.length == 3) {
-                json.put("id_0", sa[0]);
-                json.put("id_1", sa[1]);
-                json.put("id_2", sa[2]);
-                json.put("id_3", id);
+                idParts[0] = sa[0];
+                idParts[1] = sa[1];
+                idParts[2] = sa[2];
+                idParts[3] = id;
             }
         } else {
-            json.put("id_0", id);
+            idParts[0] = id;
         }
 
-        // now make sure we don't already have this ID
-        //String id_1 = getUniqueID(ASpaceClient.RESOURCE_ENDPOINT, id_0, title);
+        // make sure the id is unique
+        getUniqueID(ASpaceClient.RESOURCE_ENDPOINT, "", idParts, title);
 
+        // debug code to generate random ids for copying over the same collection records
         if(makeUnique) {
-            json.put("id_0", randomStringLong.nextString());
+            idParts[0] = randomString.nextString();
+            idParts[1] = randomString.nextString();
+            idParts[2] = randomString.nextString();
+            idParts[3] = randomString.nextString();
         }
+
+        json.put("id_0", idParts[0]);
+        json.put("id_1", idParts[1]);
+        json.put("id_2", idParts[2]);
+        json.put("id_3", idParts[3]);
 
         // get the level
         json.put("level", "collection");
@@ -970,7 +981,7 @@ public class ASpaceMapper {
         json.put("container_summary", "Archon Container Summary");
 
         // add fields for EAD
-        json.put("ead_id", getUniqueID("ead", "Archon EAD", title));
+        json.put("ead_id", concatIdParts(idParts));
         json.put("ead_location", "Archon Finding Aid location");
         json.put("finding_aid_title", "Archon Finding Aid Title");
         json.put("finding_aid_date", getHumanReadableDate(record.getString("PublicationDate")));
@@ -1158,7 +1169,7 @@ public class ASpaceMapper {
 
         json.put("publish", publishRecord);
 
-        addExternalId(record, json, "resource_component");
+        addExternalId(record, json, "Collection_Content");
 
         /* Add fields needed for abstract_archival_object.rb */
 
@@ -1169,8 +1180,13 @@ public class ASpaceMapper {
         boolean dateAdded = addDate(record.getString("Date"), json, null, "created");
 
         // need to add title if no date or title
+        String uniqueId = record.getString("UniqueID");
         if(title.isEmpty() && !dateAdded) {
-            json.put("title", "Resource Component " + record.get("ID"));
+            if(!uniqueId.isEmpty()) {
+                json.put("title", uniqueId);
+            } else {
+                json.put("title", "migration_" + randomStringLong.nextString() + "_" + record.get("ID"));
+            }
         }
 
         /* add field required for archival_object.rb */
@@ -1188,7 +1204,7 @@ public class ASpaceMapper {
             json.put("other_level", fixEmptyString(record.getString("OtherLevel")));
         }
 
-        if(!record.getString("UniqueID").isEmpty()) {
+        if(!uniqueId.isEmpty()) {
             json.put("component_id", record.getString("UniqueID"));
         }
 
@@ -1201,6 +1217,45 @@ public class ASpaceMapper {
 
         // add the notes
         addResourceComponentNotes(record, json);
+
+        return json;
+    }
+
+    /**
+     * Method to convert container information for physical only component
+     * into a component
+     *
+     * @param aoEndpoint
+     * @param containerList
+     * @return
+     * @throws Exception
+     */
+    public JSONObject convertContainerInformation(String aoEndpoint, ArrayList<String> containerList) throws Exception {
+        String[] sa = containerList.get(0).split("::");
+
+        // Main json object
+        JSONObject json = new JSONObject();
+
+        json.put("uri", aoEndpoint + "/" + sa[2]);
+        json.put("jsonmodel_type", "archival_object");
+
+        json.put("publish", publishRecord);
+
+
+        /* Add fields needed for abstract_archival_object.rb */
+
+        // check to make sure we have a title
+        String title = WordUtils.capitalize(sa[0] + " " + sa[1]);
+        json.put("title", title);
+
+        /* add field required for archival_object.rb */
+        json.put("level", "item");
+
+        // make the ref id unique otherwise ASpace complains
+        String refId = sa[2];
+        json.put("ref_id", refId);
+
+        json.put("position", new Integer(sa[3]));
 
         return json;
     }
@@ -1603,7 +1658,7 @@ public class ASpaceMapper {
      * @param id
      * @return
      */
-    private String getUniqueID(String endpoint, String id, String title) {
+    private String getUniqueID(String endpoint, String id, String[] idParts, String title) {
         id = id.trim();
 
         if(endpoint.equals(ASpaceClient.DIGITAL_OBJECT_ENDPOINT)) {
@@ -1637,33 +1692,35 @@ public class ASpaceMapper {
 
                 message = "Duplicate Accession (" + title +  ") Id: "  + id  + " Added: " + nid + "\n";
                 System.out.println(message);
-                //aspaceCopyUtil.addErrorMessage(message);
+                aspaceCopyUtil.addErrorMessage(message);
 
                 return nid;
             }
         } else if(endpoint.equals(ASpaceClient.RESOURCE_ENDPOINT)) {
-            String message;
+            String message = null;
 
-            if(!resourceIDs.contains(id)) {
+            // get the concat id now
+            id = concatIdParts(idParts);
+
+            if (!resourceIDs.contains(id)) {
                 resourceIDs.add(id);
-                return "";
             } else {
-                String nid;
+                String fullId = "";
 
                 do {
-                    nid = "##" + randomStringLong.nextString();
-                } while (resourceIDs.contains(nid));
+                    idParts[0] += " ##" + randomString.nextString();
+                    fullId = concatIdParts(idParts);
+                } while (resourceIDs.contains(fullId));
 
-                resourceIDs.add(nid);
+                resourceIDs.add(fullId);
 
-                message = "Duplicate Resource (" + title +  ") Id: "  + id  + " Added: " + nid + "\n";
-                System.out.println(message);
-                //aspaceCopyUtil.addErrorMessage(message);
-
-                id = nid;
+                message = "Duplicate Resource Id: " + id + " Changed to: " + fullId + "\n";
+                aspaceCopyUtil.addErrorMessage(message);
             }
 
-            return id;
+            // we don't need to return the new id here, since the idParts array
+            // is being used to to store the new id
+            return "not used";
         } else if(endpoint.equals("ead")) {
             if(id.isEmpty()) {
                 return "";
@@ -1680,8 +1737,8 @@ public class ASpaceMapper {
 
                 eadIDs.add(nid);
 
-                //String message = "Duplicate EAD Id: "  + id  + " Changed to: " + nid + "\n";
-                //aspaceCopyUtil.addErrorMessage(message);
+                String message = "Duplicate EAD Id: "  + id  + " Changed to: " + nid + "\n";
+                aspaceCopyUtil.addErrorMessage(message);
 
                 // assign id to new id
                 id = nid;

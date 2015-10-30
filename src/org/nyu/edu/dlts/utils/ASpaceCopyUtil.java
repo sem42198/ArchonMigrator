@@ -165,8 +165,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
     private final String REPOSITORY_MISMATCH_KEY = "repositoryMismatchMap";
     private final String RECORD_TOTAL_KEY = "copyProgress";
 
-    // An Array List for storing the total number of main records transferred
-    ArrayList<String> recordTotals = new ArrayList<String>();
+    // An HashMap for storing the total number of main records transferred
+    LinkedHashMap<String, String> recordTotals = new LinkedHashMap<String, String>();
 
     // Specifies whether or not to simulate the REST calls
     private boolean simulateRESTCalls = false;
@@ -192,6 +192,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
     // the default repository id
     private String defaultRepositoryId;
+
+    // a hash map for storing the parent container information
+    private HashMap<String, ArrayList<String>> containerListMap;
 
     /**
      * The main constructor, used when running as a stand alone application
@@ -1543,6 +1546,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 return;
             }
 
+            // create a new container list map
+            containerListMap = new HashMap<String, ArrayList<String>>();
+
             // get the collection record
             JSONObject collection = records.getJSONObject(keys.next());
 
@@ -1558,6 +1564,10 @@ public class ASpaceCopyUtil implements  PrintConsole {
             // get the at resource identifier to see if to only copy a specified resource
             // and to use for trouble shooting purposes
             String arId = collection.getString("CollectionIdentifier");
+
+            if(arId == null || arId.isEmpty()) {
+                arId = "CI" +dbId;
+            }
 
             currentRecordIdentifier = "DB ID: " + dbId + "\nAR ID: " + arId;
             currentRecordDBID = dbId;
@@ -1687,7 +1697,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                             addSubjectsAsCreators(linkedAgentsJA, subjectAsCreatorsList, title);
 
                             // add the instances
-                            addInstances(createdInstances, containerList, component, componentJS, title);
+                            addInstances(createdInstances, containerList, component, componentJS);
 
                             addDigitalInstances(componentJS, "content_" + cid, collectionTitle, batchEndpoint);
 
@@ -1711,31 +1721,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 }
 
                 // now add any instances to the physically only components
-                addInstancesForPhysicalComponents(createdInstances, physicalComponents,
+                addInstancesForPhysicalComponents(batchJA, aoEndpoint, createdInstances, physicalComponents,
                         intellectualComponents, resourceJS, resourceComponents);
 
                 // free some memory now
                 freeMemory();
 
                 print("Batch Copying Resource # " + count + " || Title: " + collectionTitle);
-
-                /* DEBUG CODE */
-                int batchLength = batchJA.length();
-
-                if(batchLength < batchLengthMin) {
-                    print("\nRecord too small to copy ..." + collectionTitle + "\n");
-                    continue;
-                } else if(batchLength > batchLengthMax) {
-                    print("\nRecord too big to copy ..." + collectionTitle + "\n");
-                    continue;
-                } else {
-                    print("\nNumber of records in batch: " + batchLength + "\n");
-                    if(batchLength > maxBatchLength) {
-                        maxBatchLength = batchLength;
-                    }
-                }
-
-                /* END DEBUG */
 
                 // redo the sort order so we don't have any collisions and things are sorted correctly
                 String invalidChildRecordIds = redoComponentSortOrder(parentMap);
@@ -1754,6 +1746,11 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                     updateResourceURIMap(dbId, resourceURI);
                     incrementCopyCount();
+
+                    // update the copy message
+                    updateRecordTotals("Instance Digital Objects", digitalObjectTotal, digitalObjectSuccess);
+                    updateRecordTotals("Locations", locationTotal, locationSuccess);
+                    updateRecordTotals("Collections", total, copyCount);
 
                     print("Batch Copied Collection: " + collectionTitle + " :: " + resourceURI);
                 } else {
@@ -1774,14 +1771,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         // update the number of resource actually copied
         updateRecordTotals("Collections", total, copyCount);
-
-        // TODO -- remove debug code below
-        System.out.println("\n\nMaximum Batch Length: " + maxBatchLength + " records");
     }
 
     /**
      * Method add any instances to the resource record which have not been added to component
      * records already. This method is a mess due to the conflation of intellectual and physical arrangement
+     * @param batchJA
      * @param createdInstances
      * @param physicalComponents
      * @param intellectualComponents
@@ -1789,7 +1784,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param resourceComponents
      * @throws Exception
      */
-    private void addInstancesForPhysicalComponents(HashSet<String> createdInstances,
+    private void addInstancesForPhysicalComponents(JSONArray batchJA, String aoEndpoint,
+                                                   HashSet<String> createdInstances,
                                                    HashSet<String> physicalComponents,
                                                    HashMap<String, JSONObject> intellectualComponents,
                                                    JSONObject resourceJS,
@@ -1801,16 +1797,10 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                 int rootContentId = component.getInt("RootContentID");
                 int parentId = component.getInt("ParentID");
-                JSONArray instancesJA = new JSONArray();
 
                 if (parentId == 0) {
                     addContainerListInformation(containerList, component);
-
-                    if(resourceJS.has("instances")) {
-                        instancesJA = resourceJS.getJSONArray("instances");
-                    }
-
-                    createInstance(null, containerList, instancesJA, resourceJS.getString("title"));
+                    addComponentForPhysicalOnlyRecord(batchJA, aoEndpoint, resourceJS, null, containerList);
                 } else if (rootContentId != 0 && parentId != 0) {
                     int topParentId = getParentId(resourceComponents, containerList, null, parentId);
 
@@ -1820,20 +1810,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                     // now check to see if we adding this to a component or the resource record
                     if(parentId == 0) {
-                        if(resourceJS.has("instances")) {
-                            instancesJA = resourceJS.getJSONArray("instances");
-                        }
-
-                        createInstance(null, containerList, instancesJA, resourceJS.getString("title"));
+                        addComponentForPhysicalOnlyRecord(batchJA, aoEndpoint, resourceJS, null, containerList);
                     } else {
                         JSONObject parentJS = intellectualComponents.get("" + topParentId);
 
                         if(parentJS != null) {
-                            if (parentJS.has("instances")) {
-                                instancesJA = parentJS.getJSONArray("instances");
-                            }
-
-                            createInstance(null, containerList, instancesJA, parentJS.getString("title"));
+                            addComponentForPhysicalOnlyRecord(batchJA, aoEndpoint, resourceJS, parentJS, containerList);
                         } else {
                             String message = "Unable to locate parent record for instance: " + containerList.get(0) + "\n";
                             addErrorMessage(message);
@@ -1847,25 +1829,74 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
+     * This is used to create a component record for physical only component which does not have any child record
+     *
+     * @param batchJA
+     * @param aoEndpoint
+     * @param resourceJS
+     * @param parentJS
+     * @param containerList
+     */
+    private void addComponentForPhysicalOnlyRecord(JSONArray batchJA, String aoEndpoint, JSONObject resourceJS,
+                                                   JSONObject parentJS, ArrayList<String> containerList) throws Exception {
+
+        // create the component record
+        JSONObject componentJS = mapper.convertContainerInformation(aoEndpoint, containerList);
+
+        // add the container information
+        JSONArray instancesJA = new JSONArray();
+        componentJS.put("instances", instancesJA);
+        createInstance(null, containerList, instancesJA, componentJS.getString("title"));
+
+        // add references for the parent and resource records
+        componentJS.put("resource", mapper.getReferenceObject(resourceJS.getString("uri")));
+        if(parentJS != null) {
+            componentJS.put("parent", mapper.getReferenceObject(parentJS.getString("uri")));
+        }
+
+        batchJA.put(componentJS);
+    }
+
+    /**
      * Method to add an instance record
      * @param createdInstances
      * @param componentJS
-     * @param title
      */
     private void addInstances(HashSet<String> createdInstances, ArrayList<String> containerList,
-                              JSONObject component, JSONObject componentJS, String title) throws JSONException {
+                              JSONObject component, JSONObject componentJS) throws JSONException {
         JSONArray instancesJA = new JSONArray();
 
-        // see if we have to add an instance for a physical only parents
-        if(containerList != null && containerList.size() != 0) {
-            createInstance(createdInstances, containerList, instancesJA, title);
+        // get the parent container information
+        ArrayList<String> parentContainerList = null;
+
+        if (componentJS.has("parent")) {
+            String parentId = getIdFromURI(componentJS.getString("parent"));
+            parentContainerList = containerListMap.get(parentId);
         }
 
-        // if the component is physical/intellectual we need to add an instance
+        // see if we have to add an instance for a physical only parents
         if(component.getInt("ContentType") == 3) {
-            containerList = new ArrayList<String>();
-            addContainerListInformation(containerList, component);
-            createInstance(null, containerList, instancesJA, componentJS.getString("title"));
+            if(containerList != null && containerList.size() != 0) {
+                addContainerListInformation(containerList, component);
+                createInstance(createdInstances, containerList, instancesJA, componentJS.getString("title"));
+            } else {
+                containerList = new ArrayList<String>();
+
+                if(parentContainerList != null) {
+                    containerList.add(parentContainerList.get(0));
+                }
+
+                addContainerListInformation(containerList, component);
+                createInstance(null, containerList, instancesJA, componentJS.getString("title"));
+            }
+        } else {
+            if (containerList != null && containerList.size() != 0) {
+                createInstance(createdInstances, containerList, instancesJA, componentJS.getString("title"));
+            } else {
+                if(parentContainerList != null) {
+                    createInstance(null, parentContainerList, instancesJA, componentJS.getString("title"));
+                }
+            }
         }
 
         if (instancesJA.length() != 0) {
@@ -1883,12 +1914,15 @@ public class ASpaceCopyUtil implements  PrintConsole {
      */
     private void createInstance(HashSet<String> createdInstances, ArrayList<String> containerList,
                                 JSONArray instancesJA, String title) throws JSONException {
+
+        // length of the container list
+        int length = containerList.size();
+
         JSONObject instanceJS = new JSONObject();
         instanceJS.put("instance_type", "text");
 
         JSONObject containerJS = new JSONObject();
 
-        int length = containerList.size();
         for (int i = 0; i < length; i++) {
             String[] sa = containerList.get(i).split("::");
 
@@ -1999,7 +2033,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 // store the container information for this physical only instance
                 // in the Archon component record for convenience
                 addContainerListInformation(containerList, parent);
-
             } else {
                 topParentId = parentId;
                 break;
@@ -2017,7 +2050,10 @@ public class ASpaceCopyUtil implements  PrintConsole {
     private void addContainerListInformation(final ArrayList<String> containerList, JSONObject component) throws JSONException {
         String type = enumUtil.getASpaceInstanceContainerType(component.getString("ContainerTypeID"));
         String indicator = component.getString("ContainerIndicator");
-        containerList.add(type + "::" + indicator + "::" + component.get("ID"));
+        containerList.add(type + "::" + indicator + "::" + component.get("ID") + "::" + component.get("SortOrder"));
+
+        // store this container list in a hashmap to make looking up the parent container information later
+        containerListMap.put(component.getString("ID"), containerList);
     }
 
     /**
@@ -2747,7 +2783,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      */
     private void updateRecordTotals(String recordType, int total, int success) {
         float percent = (new Float(success)/new Float(total))*100.0f;
-        recordTotals.add(recordType + " : " + success + " / " + total + " (" + String.format("%.2f", percent) + "%)");
+        recordTotals.put(recordType, recordType + " : " + success + " / " + total + " (" + String.format("%.2f", percent) + "%)");
     }
 
     /**
@@ -2858,7 +2894,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
     private String getTotalRecordsCopiedMessage() {
         String totalRecordsCopied = "";
 
-        for(String entry: recordTotals) {
+        for(String entry: recordTotals.values()) {
             totalRecordsCopied += entry + "\n";
         }
 
@@ -2990,7 +3026,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             // load the record totals so far
             if(uriMap.containsKey(RECORD_TOTAL_KEY)) {
-                recordTotals = (ArrayList<String>)uriMap.get(RECORD_TOTAL_KEY);
+                recordTotals = (LinkedHashMap<String, String>)uriMap.get(RECORD_TOTAL_KEY);
             }
 
             print("Loaded URI Maps");
@@ -3063,15 +3099,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
-     * Method to set the record dump directory. Used for debugging purposes
-     *
-     * @param directory
-     */
-    public void setRecordDumpDirectory(File directory) {
-        this.recordDumpDirectory = directory;
-    }
-
-    /**
      * Method to extract the id from a given URI
      * @param uri
      * @return
@@ -3093,7 +3120,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         archonClient.getSession();
 
-        ASpaceCopyUtil aspaceCopyUtil  = new ASpaceCopyUtil(archonClient, "http://54.227.35.51:9389", "admin", "admin");
+        ASpaceCopyUtil aspaceCopyUtil  = new ASpaceCopyUtil(archonClient, "http://54.227.35.51:8089", "admin", "admin");
         aspaceCopyUtil.setSimulateRESTCalls(false);
         aspaceCopyUtil.getSession();
         aspaceCopyUtil.setBBCodeOption("-bbcode_html");

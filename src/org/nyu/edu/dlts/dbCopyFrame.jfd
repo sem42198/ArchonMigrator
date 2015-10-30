@@ -14,7 +14,7 @@
       </object>
       <void method="setProperty">
        <string>title</string>
-       <string>Archon Data Migrator v0.5.0 (10-22-2015)</string>
+       <string>Archon Data Migrator v1.0.0 RC1 (10-30-2015)</string>
       </void>
       <void method="add">
        <object class="com.jformdesigner.model.FormContainer">
@@ -51,7 +51,7 @@
             <string>javax.swing.JLabel</string>
             <void method="setProperty">
              <string>text</string>
-             <string>  Archives Space Version: v1.4.0</string>
+             <string>  Archives Space Version: v1.4.x</string>
             </void>
             <void method="setProperty">
              <string>horizontalTextPosition</string>

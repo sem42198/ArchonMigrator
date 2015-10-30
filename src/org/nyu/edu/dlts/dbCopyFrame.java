@@ -267,9 +267,12 @@ public class dbCopyFrame extends JFrame {
                     migrationErrors = ascopy.getSaveErrorMessages() + "\n\nTotal errors/warnings: " + errorCount;
                 } catch (Exception e) {
                     consoleTextArea.setText("Unrecoverable exception, migration stopped ...\n\n");
-                    consoleTextArea.append(ascopy.getCurrentRecordInfo() + "\n\n");
+
+                    if(ascopy != null) {
+                        consoleTextArea.append(ascopy.getCurrentRecordInfo() + "\n\n");
+                    }
+
                     consoleTextArea.append(getStackTrace(e));
-                    //e.printStackTrace();
                 }
 
                 reEnableCopyButtons();
@@ -550,7 +553,7 @@ public class dbCopyFrame extends JFrame {
         CellConstraints cc = new CellConstraints();
 
         //======== this ========
-        setTitle("Archon Data Migrator v0.5.0 (10-22-2015)");
+        setTitle("Archon Data Migrator v1.0.0 RC1 (10-30-2015)");
         Container contentPane = getContentPane();
         contentPane.setLayout(new BorderLayout());
 
@@ -604,7 +607,7 @@ public class dbCopyFrame extends JFrame {
                     }));
 
                 //---- apiLabel ----
-                apiLabel.setText("  Archives Space Version: v1.4.0");
+                apiLabel.setText("  Archives Space Version: v1.4.x");
                 apiLabel.setHorizontalTextPosition(SwingConstants.CENTER);
                 contentPanel.add(apiLabel, cc.xy(1, 1));
 

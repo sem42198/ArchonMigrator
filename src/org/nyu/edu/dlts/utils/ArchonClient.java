@@ -43,6 +43,7 @@ public class ArchonClient {
     public static final String ENUM_CREATOR_SOURCES_ENDPOINT = "?p=core/enums&enum_type=creatorsources";
     public static final String ENUM_EXTENT_UNITS_ENDPOINT = "?p=core/enums&enum_type=extentunits";
     public static final String ENUM_MATERIAL_TYPES_ENDPOINT = "?p=core/enums&enum_type=materialtypes";
+    public static final String ENUM_ACCESSION_TYPES_ENDPOINT = "?p=core/enums&enum_type=materialtypes";
     public static final String ENUM_CONTAINER_TYPES_ENDPOINT = "?p=core/enums&enum_type=containertypes";
     public static final String ENUM_FILE_TYPES_ENDPOINT = "?p=core/enums&enum_type=filetypes";
     public static final String ENUM_PROCESSING_PRIORITIES_ENDPOINT = "?p=core/enums&enum_type=processingpriorities";
@@ -241,7 +242,7 @@ public class ArchonClient {
 
         String[] archonEnums = {ENUM_USER_GROUPS_ENDPOINT, ENUM_SUBJECT_SOURCES_ENDPOINT,
         ENUM_CONTAINER_TYPES_ENDPOINT, ENUM_CREATOR_SOURCES_ENDPOINT, ENUM_EXTENT_UNITS_ENDPOINT,
-        ENUM_FILE_TYPES_ENDPOINT, ENUM_MATERIAL_TYPES_ENDPOINT, ENUM_PROCESSING_PRIORITIES_ENDPOINT,
+        ENUM_FILE_TYPES_ENDPOINT, ENUM_ACCESSION_TYPES_ENDPOINT, ENUM_MATERIAL_TYPES_ENDPOINT, ENUM_PROCESSING_PRIORITIES_ENDPOINT,
                 ENUM_COUNTRIES_ENDPOINT};
 
         for(String endpoint: archonEnums) {
@@ -249,7 +250,11 @@ public class ArchonClient {
             JSONObject records = getEnumList(endpoint);
 
             try {
-                enumsJS.put(endpoint, records);
+                if(!endpoint.equals(ENUM_ACCESSION_TYPES_ENDPOINT)) {
+                    enumsJS.put(endpoint, records);
+                } else {
+                    enumsJS.put("accessiontypes", records);
+                }
             } catch (JSONException e) {
                 e.printStackTrace();
             }
@@ -399,6 +404,7 @@ public class ArchonClient {
                 String key = keys.next();
 
                 JSONObject recordJS = recordsJS.getJSONObject(key);
+                recordJS.put("id_parts", "");
 
                 String id = recordJS.getString("ID");
                 recordsMap.put(id, recordJS);
@@ -486,12 +492,18 @@ public class ArchonClient {
      */
     private String getRootParent(HashMap<String, JSONObject> recordsMap, JSONObject recordJS, JSONObject classificationTermJS) throws Exception {
         if(recordJS.getString("ParentID").equals("0")) {
-            String idParts = classificationTermJS.get("id_parts") + "/" + recordJS.get("id_parts");
+            String idParts = "";
+            if(!classificationTermJS.getString("id_parts").isEmpty()) {
+                idParts = classificationTermJS.get("id_parts") + "/" + recordJS.get("id_parts");
+            } else {
+                idParts = recordJS.getString("id_parts");
+            }
+
             classificationTermJS.put("id_parts", idParts);
 
             return recordJS.getString("ID");
         } else {
-            if(!classificationTermJS.has("id_parts")) {
+            if(classificationTermJS.getString("id_parts").isEmpty()) {
                 classificationTermJS.put("id_parts", recordJS.get("ClassificationIdentifier"));
             } else {
                 String idParts = classificationTermJS.get("ClassificationIdentifier") + "/" + recordJS.get("ClassificationIdentifier");

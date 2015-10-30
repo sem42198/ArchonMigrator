@@ -93,7 +93,7 @@ public class ASpaceEnumUtil {
      */
     private void loadLanguageCodes() {
         try {
-            String text = IOUtils.toString(this.getClass().getResourceAsStream("../resources/languages.json"), "UTF-8");
+            String text = IOUtils.toString(this.getClass().getResourceAsStream("languages.json"), "UTF-8");
             languagesJS = new JSONObject(text);
         } catch (IOException e) {
             e.printStackTrace();
@@ -1255,6 +1255,10 @@ public class ASpaceEnumUtil {
             dynamicEnum = dynamicEnums.get("container_type");
             dynamicEnum.put("valueKey", "ContainerType");
             dynamicEnum.put("idPrefix", "container_types");
+        } else if (listName.contains("accessiontypes")) {
+            dynamicEnum = dynamicEnums.get("accession_resource_type");
+            dynamicEnum.put("valueKey", "MaterialType");
+            dynamicEnum.put("idPrefix", "accession_type");
         } else if (listName.contains("materialtypes")) {
             dynamicEnum = dynamicEnums.get("resource_resource_type");
             dynamicEnum.put("valueKey", "MaterialType");
