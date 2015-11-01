@@ -1566,7 +1566,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
             String arId = collection.getString("CollectionIdentifier");
 
             if(arId == null || arId.isEmpty()) {
-                arId = "CI" +dbId;
+                arId = "DBID-" +dbId;
             }
 
             currentRecordIdentifier = "DB ID: " + dbId + "\nAR ID: " + arId;

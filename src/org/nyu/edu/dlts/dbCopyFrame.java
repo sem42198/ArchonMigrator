@@ -83,6 +83,11 @@ public class dbCopyFrame extends JFrame {
         viewRecordButton.setVisible(false);
         basicUIButton.setVisible(false);
 
+        // clear out some defaults used when in development
+        sourceTextField.setText("http://localhost/archon");
+        downloadFolderTextField.setText("");
+        hostTextField.setText("http://localhost:8089");
+
         isBasicUI = true;
     }
 
@@ -553,7 +558,7 @@ public class dbCopyFrame extends JFrame {
         CellConstraints cc = new CellConstraints();
 
         //======== this ========
-        setTitle("Archon Data Migrator v1.0.0 RC1 (10-30-2015)");
+        setTitle("Archon Data Migrator v1.0.0 RC2 (11-01-2015)");
         Container contentPane = getContentPane();
         contentPane.setLayout(new BorderLayout());
 

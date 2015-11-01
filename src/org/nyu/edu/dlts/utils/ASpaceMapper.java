@@ -929,8 +929,7 @@ public class ASpaceMapper {
         String classificationID = record.getString("ClassificationID");
         String[] idParts = new String[]{"", "", "", ""};
 
-        if(!classificationID.equals("0")) {
-            System.out.println("Classification ID: " + classificationID);
+        if(!classificationID.equals("0") && classificationIdPartsMap.get(classificationID) != null) {
             String[] sa = classificationIdPartsMap.get(classificationID).split("/");
 
             // this can be placed in a loop but lets keep it nice an clear?
@@ -1447,7 +1446,7 @@ public class ASpaceMapper {
      * @throws Exception
      */
     private void addSinglePartNote(JSONArray notesJA, String noteType, String noteLabel, String noteContent) throws Exception {
-        if(noteContent.isEmpty()) return;
+        if(noteContent.isEmpty() || noteType.isEmpty()) return;
 
         JSONObject noteJS = new JSONObject();
 
@@ -1473,7 +1472,7 @@ public class ASpaceMapper {
      * @throws Exception
      */
     private void addMultipartNote(JSONArray notesJA, String noteType, String noteLabel, String noteContent) throws Exception {
-        if(noteContent.isEmpty()) return;
+        if(noteContent.isEmpty() || noteType.isEmpty()) return;
 
         JSONObject noteJS = new JSONObject();
 
@@ -1517,7 +1516,7 @@ public class ASpaceMapper {
      * @throws Exception
      */
     private void addDigitalObjectNote(JSONArray notesJA, String noteType, String noteLabel, String noteContent) throws Exception {
-        if(noteContent.isEmpty()) return;
+        if(noteContent.isEmpty() || noteType.isEmpty()) return;
 
         JSONObject noteJS = new JSONObject();
 
