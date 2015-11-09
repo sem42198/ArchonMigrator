@@ -447,8 +447,8 @@ public class ArchonClient {
             for(JSONObject recordJS: classificationList) {
                 String id = recordJS.getString("ID");
                 if(childrenMap.containsKey(id)) {
-                    sortCollectionItems(childrenMap.get(id));
-                    recordJS.put("children", childrenMap.get(id));
+                    JSONArray sortedChildrenJA = sortCollectionItems(childrenMap.get(id));
+                    recordJS.put("children", sortedChildrenJA);
                 } else {
                     recordJS.put("children", new JSONArray());
                 }
@@ -464,11 +464,13 @@ public class ArchonClient {
     }
 
     /**
-     * Method used to assign the position value for collection children
+     * Method used to assign the position value for collection children so they sort correctly
+     *
      * @param childrenJA
      */
-    private void sortCollectionItems(JSONArray childrenJA) throws JSONException {
+    private JSONArray sortCollectionItems(JSONArray childrenJA) throws JSONException {
         TreeMap<String, JSONObject> treeMap = new TreeMap<String, JSONObject>();
+        JSONArray sortedChildrenJA = new JSONArray();
 
         // first put all the children in a tree map so they get sorted
         for(int i = 0; i < childrenJA.length(); i++) {
@@ -481,7 +483,10 @@ public class ArchonClient {
         int position = 1;
         for(JSONObject childJS: treeMap.values()) {
             childJS.put("Position", position++);
+            sortedChildrenJA.put(childJS);
         }
+
+        return sortedChildrenJA;
     }
 
     /**

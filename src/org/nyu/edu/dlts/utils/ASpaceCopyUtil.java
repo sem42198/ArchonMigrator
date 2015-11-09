@@ -148,23 +148,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
     // used to specified the the copying process is running
     private boolean copying = false;
 
-    /* Variables used to save URI mapping to file to make data transfer more efficient */
-
-    // file where the uri maps is saved
-    private static File uriMapFile = null;
-
-    // keys use to store objects in hash map
-    private final String REPOSITORY_KEY = "repositoryURIMap";
-    private final String LOCATION_KEY = "locationURIMap";
-    private final String USER_KEY = "userURIMap";
-    private final String SUBJECT_KEY = "subjectURIMap";
-    private final String NAME_KEY = "nameURIMap";
-    private final String ACCESSION_KEY = "accessionURIMap";
-    private final String DIGITAL_OBJECT_KEY = "digitalObjectURIMap";
-    private final String RESOURCE_KEY = "resourceURIMap";
-    private final String REPOSITORY_MISMATCH_KEY = "repositoryMismatchMap";
-    private final String RECORD_TOTAL_KEY = "copyProgress";
-
     // An HashMap for storing the total number of main records transferred
     LinkedHashMap<String, String> recordTotals = new LinkedHashMap<String, String>();
 
@@ -179,12 +162,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
     // A string builder object to track errors
     private StringBuilder errorBuffer = new StringBuilder();
-
-    /* variables used for debugging operations */
-    private int maxDepth = 0;
-
-    private int batchLengthMin = 0;
-    private int batchLengthMax = 1000000;
 
     private File recordDumpDirectory = null;
 
@@ -219,31 +196,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
         // set the enum util to that of the mapper
         enumUtil = mapper.getEnumUtil();
 
-        // set the file that contains the record map
-        uriMapFile = new File(System.getProperty("user.home") + File.separator + "uriMaps.bin");
-
         // first add the admin repo to the repository URI map
         repositoryURIMap.put("adminRepo", ASpaceClient.ADMIN_REPOSITORY_ENDPOINT);
 
         // set the print console object so we have something to print out while the
         // records are being read in batches of 100
         archonClient.setPrintConsole(this);
-
-        /*
-        // get the language codes and set it for the enum and mapper utils
-        languageCodes = sourceRCD.getLanguageCodes();
-        nameLinkCreatorCodes = sourceRCD.getNameLinkCreatorCodes();
-
-        mapper.setLanguageCodes(languageCodes);
-        mapper.setNameLinkCreatorCodes(nameLinkCreatorCodes);
-        mapper.setConnectionUrl(sourceRCD.getConnectionUrl());
-
-        enumUtil.setLanguageCodes(languageCodes);
-        enumUtil.setNameLinkCreatorCodes(nameLinkCreatorCodes);
-
-        // map used when copying lookup list items to the archive space backend
-        lookupListMap.put("subject term source", ASpaceClient.VOCABULARY_ENDPOINT);
-        */
 
         // start the stop watch object so we can see how long this data transfer takes
         startWatch();
@@ -1516,7 +1474,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
         if(cachedCollectionsJS == null) {
             records = archonClient.getCollectionRecords();
             cachedCollectionsJS = records;
-            saveURIMaps();
         } else {
             records = cachedCollectionsJS;
         }
@@ -2542,7 +2499,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
      */
     private void updateResourceURIMap(String oldIdentifier, String uri) {
         resourceURIMap.put(oldIdentifier, uri);
-        saveURIMaps();
     }
 
     /**
@@ -2977,74 +2933,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
-     * Method to save the URI maps to a binary file
-     */
-    public void saveURIMaps() {
-        HashMap uriMap = new HashMap();
-
-        // only save maps we are going to need,
-        // or we not generating from ASpace backend data
-        uriMap.put(LOCATION_KEY, locationURIMap);
-        uriMap.put(SUBJECT_KEY, subjectURIMap);
-        uriMap.put(NAME_KEY, nameURIMap);
-        uriMap.put(ACCESSION_KEY, accessionURIMap);
-        uriMap.put(DIGITAL_OBJECT_KEY, digitalObjectURIMap);
-        uriMap.put(RESOURCE_KEY, resourceURIMap);
-
-        // store the record totals array list here also
-        uriMap.put(RECORD_TOTAL_KEY, recordTotals);
-
-        /* DEBUG CODE. Store the return resource records
-        if(cachedCollectionsJS != null) {
-            String key = archonClient.getHost() + ArchonClient.COLLECTION_ENDPOINT;
-            uriMap.put(key, cachedCollectionsJS.toString());
-        }*/
-
-        // save to file system now
-        print("\nSaving URI Maps ...");
-
-        try {
-            FileManager.saveObjectToFile(uriMapFile, uriMap);
-        } catch (Exception e) {
-            print("Unable to save URI map file " + uriMapFile.getName());
-        }
-    }
-
-    /**
-     * Method to load the save URI maps
-     */
-    public void loadURIMaps() {
-        try {
-            HashMap uriMap  = (HashMap) FileManager.getObjectFromFile(uriMapFile);
-
-            locationURIMap = (HashMap<String,String>)uriMap.get(LOCATION_KEY);
-            subjectURIMap = (HashMap<String,String>)uriMap.get(SUBJECT_KEY);
-            nameURIMap = (HashMap<String,String>)uriMap.get(NAME_KEY);
-            accessionURIMap = (HashMap<String,String>)uriMap.get(ACCESSION_KEY);
-            digitalObjectURIMap = (HashMap<String,String>)uriMap.get(DIGITAL_OBJECT_KEY);
-            resourceURIMap = (HashMap<String,String>)uriMap.get(RESOURCE_KEY);
-
-            // load the record totals so far
-            if(uriMap.containsKey(RECORD_TOTAL_KEY)) {
-                recordTotals = (LinkedHashMap<String, String>)uriMap.get(RECORD_TOTAL_KEY);
-            }
-
-            print("Loaded URI Maps");
-        } catch (Exception e) {
-            print("Unable to load URI map file: " + uriMapFile.getName());
-        }
-    }
-
-    /**
-     * Method to see if the URI map file exist
-     *
-     * @return
-     */
-    public boolean uriMapFileExist() {
-        return uriMapFile.exists();
-    }
-
-    /**
      * Method used to simulate the REST calls. Useful for testing memory usage and for setting baseline
      * data transfer time
      *
@@ -3061,17 +2949,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
      */
     public void setDeleteSavedResources(boolean deleteSavedResources) {
         this.deleteSavedResources = deleteSavedResources;
-    }
-
-    /**
-     * Method to set the batch size limits
-     *
-     * @param min
-     * @param max
-     */
-    public void setBatchSizeLimits(int min, int max) {
-        batchLengthMin = min;
-        batchLengthMax = max;
     }
 
     /**
@@ -3114,8 +2991,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param args
      */
     public static void main(String[] args) throws JSONException {
-        String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
-        //String host = "http://localhost/~nathan/archon";
+        //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
+        String host = "http://localhost/~nathan/archon";
         ArchonClient archonClient = new ArchonClient(host, "admin", "admin");
 
         archonClient.getSession();

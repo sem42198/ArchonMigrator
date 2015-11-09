@@ -217,27 +217,20 @@ public class dbCopyFrame extends JFrame {
                     // set the progress bar from doing it's thing since the ascopy class is going to take over
                     copyProgressBar.setIndeterminate(false);
 
-                    if(useSaveURIMapsCheckBox.isSelected() && ascopy.uriMapFileExist()) {
-                        ascopy.loadURIMaps();
-                    } else {
-                        // check to see if we need to set the default repository
-                        if(defaultRepositoryCheckBox.isSelected()) {
-                            ascopy.setDefaultRepositoryId(defaultRepositoryComboBox.getSelectedItem().toString());
-                        }
-
-                        if(!copyStopped) ascopy.copyEnumRecords();
-                        if(!copyStopped) ascopy.copyRepositoryRecords();
-                        if(!copyStopped) ascopy.mapRepositoryGroups();
-                        if(!copyStopped) ascopy.copyUserRecords();
-                        if(!copyStopped) ascopy.copySubjectRecords();
-                        if(!copyStopped) ascopy.copyCreatorRecords();
-                        if(!copyStopped) ascopy.copyClassificationRecords();
-                        if(!copyStopped) ascopy.copyAccessionRecords();
-                        if(!copyStopped) ascopy.copyDigitalObjectRecords();
-
-                        // save the record maps for possible future use
-                        ascopy.saveURIMaps();
+                    // check to see if we need to set the default repository
+                    if (defaultRepositoryCheckBox.isSelected()) {
+                        ascopy.setDefaultRepositoryId(defaultRepositoryComboBox.getSelectedItem().toString());
                     }
+
+                    if (!copyStopped) ascopy.copyEnumRecords();
+                    if (!copyStopped) ascopy.copyRepositoryRecords();
+                    if (!copyStopped) ascopy.mapRepositoryGroups();
+                    if (!copyStopped) ascopy.copyUserRecords();
+                    if (!copyStopped) ascopy.copySubjectRecords();
+                    if (!copyStopped) ascopy.copyCreatorRecords();
+                    if (!copyStopped) ascopy.copyClassificationRecords();
+                    if (!copyStopped) ascopy.copyAccessionRecords();
+                    if (!copyStopped) ascopy.copyDigitalObjectRecords();
 
                     // get the number of resources to copy here to allow it to be reset while the migration
                     // has been started, but migration of resources has not yet started
@@ -558,7 +551,7 @@ public class dbCopyFrame extends JFrame {
         CellConstraints cc = new CellConstraints();
 
         //======== this ========
-        setTitle("Archon Data Migrator v1.0.0 RC2 (11-01-2015)");
+        setTitle("Archon Data Migrator v1.0.0 (11-09-2015)");
         Container contentPane = getContentPane();
         contentPane.setLayout(new BorderLayout());
 
