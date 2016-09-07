@@ -861,8 +861,10 @@ public class ArchonClient {
      */
     public static void main(String[] args) throws JSONException {
         //String host = "http://archives-dev.library.illinois.edu/archondev/tracer";
-        String host = "http://localhost/~nathan/archon";
-        ArchonClient archonClient = new ArchonClient(host, "sa", "admin");
+        String host = System.getenv("ARCHON_CLIENT_HOST");
+        String user = System.getenv("ARCHON_CLIENT_USER");
+        String pass = System.getenv("ARCHON_CLIENT_PASS");
+        ArchonClient archonClient = new ArchonClient(host, user, pass);
         archonClient.getSession();
 
         // the json object containing list of records
