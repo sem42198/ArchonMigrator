@@ -909,6 +909,33 @@ public class ArchonClient {
         records = archonClient.getDigitalObjectRecords();
         System.out.println("Total Digital Objects: " + records.length());
 
+        Iterator<String> keys = records.keys();
+        while(keys.hasNext()) {
+            String key = keys.next();
+            JSONObject recordJS = records.getJSONObject(key);
+            // System.out.println(recordJS); // SHOW THE GENERATED JSON
+            ASpaceMapper mapper = new ASpaceMapper();
+            try {
+                JSONObject dobj  = mapper.convertDigitalObject(recordJS);
+                 System.out.println(dobj); // SHOW THE DOBJ JSON PAYLOAD
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            if (recordJS.has("components")) {
+                JSONArray components = recordJS.getJSONArray("components");
+                for (int i=0 ; i < components.length(); i++) {
+                    JSONObject component = components.getJSONObject(i);
+                    // System.out.println(component); // SHOW THE COMPONENT
+                    try {
+                        JSONObject dobjc  = mapper.convertToDigitalObjectComponent(component);
+                        System.out.println(dobjc); // SHOW THE DOBJC PAYLOAD
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+
         /*records = archonClient.getCollectionRecords();
         System.out.println("Total Collection Records: " + records.length());
 
