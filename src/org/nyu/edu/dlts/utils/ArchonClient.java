@@ -917,7 +917,7 @@ public class ArchonClient {
             ASpaceMapper mapper = new ASpaceMapper();
             try {
                 JSONObject dobj  = mapper.convertDigitalObject(recordJS);
-                 System.out.println(dobj); // SHOW THE DOBJ JSON PAYLOAD
+                 // System.out.println(dobj); // SHOW THE DOBJ JSON PAYLOAD
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -928,7 +928,7 @@ public class ArchonClient {
                     // System.out.println(component); // SHOW THE COMPONENT
                     try {
                         JSONObject dobjc  = mapper.convertToDigitalObjectComponent(component);
-                        System.out.println(dobjc); // SHOW THE DOBJC PAYLOAD
+                        // System.out.println(dobjc); // SHOW THE DOBJC PAYLOAD
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
