@@ -1,6 +1,7 @@
 package org.nyu.edu.dlts.utils;
 
 import org.apache.commons.lang.WordUtils;
+import org.apache.commons.lang.math.NumberUtils;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -833,7 +834,9 @@ public class ASpaceMapper {
             fileVersionJS.put("xlink_actuate_attribute", "none");
             fileVersionJS.put("xlink_show_attribute", "none");
             fileVersionJS.put("file_format_name", record.get("FileTypeID"));
-            fileVersionJS.put("file_size_bytes", record.get("Bytes"));
+            fileVersionJS.put("file_size_bytes", NumberUtils.toInt((String) record.get("Bytes"), 0));
+
+            fileVersionsJA.put(fileVersionJS);
         } else {
             //System.out.println("No file version found for " + type + ": " + record.get("Title"));
         }
