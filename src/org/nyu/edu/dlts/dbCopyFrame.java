@@ -167,6 +167,9 @@ public class dbCopyFrame extends JFrame {
                     ascopy.setProgressIndicators(copyProgressBar, errorCountLabel);
                     ascopy.setCopying(true);
 
+                    // set the base uri for digital objects
+                    ascopy.setDigitalObjectBaseURI(doURLTextField.getText().trim());
+
                     // try getting the session and only continue if a valid session is return;
                     if(!ascopy.getSession()) {
                         consoleTextArea.append("No session, nothing to do ...\n");
