@@ -776,7 +776,8 @@ public class ArchonClient {
         while (keys.hasNext()) {
             String key = keys.next();
             JSONObject jsoToAdd = jso.getJSONObject(key);
-            jsonObject.put(key, jsoToAdd);
+            String id = jsoToAdd.getString("ID");
+            jsonObject.put(id, jsoToAdd);
         }
     }
 
