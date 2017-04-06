@@ -554,7 +554,7 @@ public class dbCopyFrame extends JFrame {
         CellConstraints cc = new CellConstraints();
 
         //======== this ========
-        setTitle("Archon Data Migrator v1.0.1 (09-08-2016)");
+        setTitle("Archon Data Migrator v1.0.2 (03-22-2017)");
         Container contentPane = getContentPane();
         contentPane.setLayout(new BorderLayout());
 
