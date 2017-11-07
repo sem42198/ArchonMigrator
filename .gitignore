@@ -2,3 +2,5 @@
 dist/
 META-INF/
 *.swp
+out/
+ArchonMigrator.iml

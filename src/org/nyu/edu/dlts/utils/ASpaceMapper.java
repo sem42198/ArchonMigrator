@@ -168,6 +168,9 @@ public class ASpaceMapper {
             // map the id to value
             String id = idPrefix + "_" + enumJS.get("ID");
             enumUtil.addIdAndValueToEnumList(id, value);
+            if (idPrefix.equals("container_types")) {
+                aspaceCopyUtil.addContainerTypeValueToIDMapping(value, enumJS.getString("ID"));
+            }
 
             // see if to add this to aspace
             if(!valuesList.contains(value)) {
@@ -287,6 +290,7 @@ public class ASpaceMapper {
         json.put("name", fixEmptyString(record.getString("Name")));
         json.put("org_code", record.get("Code"));
         json.put("url", fixUrl(record.getString("URL")));
+        json.put("publish", true);
 
         if(agentURI != null) {
             json.put("agent_representation", getReferenceObject(agentURI));
