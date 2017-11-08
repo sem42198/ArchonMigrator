@@ -30,13 +30,13 @@ public class ASpaceMapper {
 
     // these store the ids of all accessions, resources, and digital objects loaded so we can
     // check for uniqueness before copying them to the ASpace backend
-    private ArrayList<String> digitalObjectIDs = new ArrayList<String>();
-    private ArrayList<String> accessionIDs = new ArrayList<String>();
-    private ArrayList<String> resourceIDs = new ArrayList<String>();
-    private ArrayList<String> eadIDs = new ArrayList<String>();
+    private HashSet<String> digitalObjectIDs = new HashSet<String>();
+    private HashSet<String> accessionIDs = new HashSet<String>();
+    private HashSet<String> resourceIDs = new HashSet<String>();
+    private HashSet<String> eadIDs = new HashSet<String>();
 
     // variable to keep track of filenames and their ids to make sure we have unique names
-    private ArrayList<String> digitalObjectFilenames = new ArrayList<String>();
+    private HashSet<String> digitalObjectFilenames = new HashSet<String>();
     private HashMap<String, String> fileIDsToFilenamesMap = new HashMap<String, String>();
 
     // some code used for testing
