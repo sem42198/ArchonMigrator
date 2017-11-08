@@ -4,4 +4,4 @@ META-INF/
 *.swp
 out/
 ArchonMigrator.iml
-/logs/*
+/logs/*.xml
