@@ -87,7 +87,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
     // hashmap that stores the converted digital objects so that they can be save to the correct repo
     // when saving the collection content
-    private HashMap<String, ArrayList<JSONArray>> digitalObjectMap = new HashMap<String, ArrayList<JSONArray>>();
+    private HashMap<Integer, HashMap<Integer, ArrayList<JSONArray>>> digitalObjectMap =
+            new HashMap<Integer, HashMap<Integer, ArrayList<JSONArray>>>();
 
     // hashmap that maps resource from old database with copy in new database
     private HashMap<String, String> resourceURIMap = new HashMap<String, String>();
@@ -1327,27 +1328,37 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 }
 
                 // check to see we just not saving the digital objects or copying them now
-                String digitalObjectListKey = null;
+//                String digitalObjectListKey = null;
+                int collectionID = 0;
+                int contentID = 0;
 
                 if(saveDigitalObjectsWithResources) {
-                    if(digitalObject.getInt("CollectionID") != 0) {
-                        if(digitalObject.getInt("CollectionContentID") != 0) {
-                            digitalObjectListKey = "content_" + digitalObject.get("CollectionContentID");
-                        } else {
-                            digitalObjectListKey = "collection_" + digitalObject.get("CollectionID");
-                        }
-                    } else {
-                        print("No record to attach digital object " + digitalObjectTitle + "...");
-                        print("Saving to default repository ...");
-                    }
+                    collectionID = digitalObject.getInt("CollectionID");
+                    contentID = digitalObject.getInt("CollectionContentID");
+//                    if(digitalObject.getInt("CollectionID") != 0) {
+//                        if(digitalObject.getInt("CollectionContentID") != 0) {
+//                            digitalObjectListKey = "content_" + digitalObject.get("CollectionContentID");
+//                        } else {
+//                            digitalObjectListKey = "collection_" + digitalObject.get("CollectionID");
+//                        }
+//                    } else {
+//                        print("No record to attach digital object " + digitalObjectTitle + "...");
+//                        print("Saving to default repository ...");
+//                    }
                 }
 
                 // call methods to actually save this digital object to the back end
                 // or store it for saving when saving the resource records
-                if(digitalObjectListKey != null) {
+//                if(digitalObjectListKey != null) {
+                if (collectionID != 0 || contentID != 0) {
                     digitalObjectTotal++;
-                    storeDigitalObject(batchJA, digitalObjectListKey);
+                    storeDigitalObject(batchJA, collectionID, contentID);
+//                    storeDigitalObject(batchJA, digitalObjectListKey);
                 } else {
+
+                    print("No record to attach digital object " + digitalObjectTitle + "...");
+                    print("Saving to default repository ...");
+
                     totalFree++;
                     saveDigitalObject(batchEndpoint, batchJA);
                 }
@@ -1405,16 +1416,30 @@ public class ASpaceCopyUtil implements  PrintConsole {
      *
      * @param batchJA
      *
-     * @param digitalObjectListKey
+     * @param contentID
+     * @param collectionID
      */
-    private void storeDigitalObject(JSONArray batchJA, String digitalObjectListKey) {
-        ArrayList<JSONArray> digitalObjectList = new ArrayList<JSONArray>();
+    private void storeDigitalObject(JSONArray batchJA, int collectionID, int contentID) {//String digitalObjectListKey) {
 
-        if(digitalObjectMap.containsKey(digitalObjectListKey)) {
-            digitalObjectList = digitalObjectMap.get(digitalObjectListKey);
-        } else {
-            digitalObjectMap.put(digitalObjectListKey, digitalObjectList);
+        HashMap<Integer, ArrayList<JSONArray>> collectionMap = digitalObjectMap.get(collectionID);
+
+        if (collectionMap == null) {
+            collectionMap = new HashMap<Integer, ArrayList<JSONArray>>();
+            digitalObjectMap.put(collectionID, collectionMap);
         }
+
+        ArrayList<JSONArray> digitalObjectList = collectionMap.get(contentID);
+
+        if (digitalObjectList == null) {
+            digitalObjectList = new ArrayList<JSONArray>();
+            collectionMap.put(contentID, digitalObjectList);
+        }
+
+//        if(digitalObjectMap.containsKey(digitalObjectListKey)) {
+//            digitalObjectList = digitalObjectMap.get(digitalObjectListKey);
+//        } else {
+//            digitalObjectMap.put(digitalObjectListKey, digitalObjectList);
+//        }
 
         digitalObjectList.add(batchJA);
     }
@@ -1514,6 +1539,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             // get the record id
             String dbId = collection.getString("ID");
+            int intID = Integer.parseInt(dbId);
 
             // get the parent repository
             String repositoryID = collection.getString("RepositoryID");
@@ -1582,7 +1608,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 }
 
                 // add the instances
-                addDigitalInstances(resourceJS, "collection_" + dbId, collectionTitle, batchEndpoint);
+//                addDigitalInstances(resourceJS, "collection_" + dbId, collectionTitle, batchEndpoint);
+                addDigitalInstances(resourceJS, intID, 0, collectionTitle, batchEndpoint);
 
                 // add the linked accessions
                 addRelatedAccessions(resourceJS, dbId, arId, repoURI + "/");
@@ -1686,7 +1713,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
                             addSubjectsAsCreators(linkedAgentsJA, subjectAsCreatorsList, title);
 
                             // add the digital instances
-                            addDigitalInstances(componentJS, "content_" + cid, collectionTitle, batchEndpoint);
+//                            addDigitalInstances(componentJS, "content_" + cid, collectionTitle, batchEndpoint);
+                            addDigitalInstances(componentJS, intID, Integer.parseInt(cid), collectionTitle, batchEndpoint);
 
                             // save this json record now to get the URI
                             componentJS.put("uri", aoEndpoint + "/" + cid);
@@ -1746,16 +1774,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
                     }
                 }
 
-                // add warning about any component IDs that were missing from Archon
-                if (notFoundIDs.size() != 0) {
-                    StringBuilder errorMessage = new StringBuilder();
-                    errorMessage.append("Could not find ").append(notFoundIDs.size())
-                            .append(" component(s) for resource: ").append(arId).append("\nNot found components:");
-                    for (String id : notFoundIDs) errorMessage.append(" ").append(id);
-                    errorMessage.append("\nReferencing child components will have root resource record as parent and be unpublished.\n");
-                    addErrorMessage(errorMessage.toString());
-                }
-
                 // now add instances for the physical components
                 for (String id: physicalComponentsToParentIDs.keySet()) {
 
@@ -1770,13 +1788,38 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                     // add any digital objects linked to the physical component in archon
                     // they linked to the component's parent in ASpace since digital object can't be linked to container
-                    addDigitalInstances(parentJSON, "content_" + id, null, batchEndpoint);
+//                    addDigitalInstances(parentJSON, "content_" + id, null, batchEndpoint);
+                    addDigitalInstances(parentJSON, intID, Integer.parseInt(id), null, batchEndpoint);
                 }
 
                 // add an instance that holds the location information
                 if(collection.has("Locations")) {
                     addLocationInstances(resourceJS, collection.getJSONArray("Locations"), "text",
                             topContainerURIs, repoURI);
+                }
+
+                // add any digital instances that were attached to a component that was not found
+                HashMap<Integer, ArrayList<JSONArray>> collectionDOMap = digitalObjectMap.get(intID);
+                if (collectionDOMap != null) {
+                    Integer[] notFoundKeys = collectionDOMap.keySet().toArray(new Integer[0]);
+                    for (int id : notFoundKeys) {
+                        notFoundIDs.add(id + "");
+                        addDigitalInstances(resourceJS, intID, id, collectionTitle, batchEndpoint);
+                    }
+                }
+
+                // remove the entire resource from the digital object map so we'll know it was found
+                digitalObjectMap.remove(intID);
+
+                // add warning about any component IDs that were missing from Archon
+                if (notFoundIDs.size() != 0) {
+                    StringBuilder errorMessage = new StringBuilder();
+                    errorMessage.append("Could not find ").append(notFoundIDs.size())
+                            .append(" component(s) for resource: ").append(arId).append("\nNot found components:");
+                    for (String id : notFoundIDs) errorMessage.append(" ").append(id);
+                    errorMessage.append("\nReferencing child components/digital objects will have root resource record as parent.");
+                    errorMessage.append("\nReferencing child components will be unpublished.\n");
+                    addErrorMessage(errorMessage.toString());
                 }
 
                 // add the components to the batch JA
@@ -2076,41 +2119,61 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param recordTitle the title of the record
      * @throws Exception
      */
-    private void addDigitalInstances(JSONObject json, String recordKey, String recordTitle, String batchEndpoint) throws Exception {
+    private void addDigitalInstances(JSONObject json, int collectionID, int contentID, String recordTitle, String batchEndpoint) throws Exception {
 
         JSONArray instancesJA = new JSONArray();
 
-        if(digitalObjectMap.containsKey(recordKey)) {
+        HashMap<Integer, ArrayList<JSONArray>> collectionMap = digitalObjectMap.get(collectionID);
+        ArrayList<JSONArray> digitalObjectList;
 
-            if (recordTitle == null) {
-                try {
-                    recordTitle = json.getString("title");
-                } catch (JSONException  e) {
-                    recordTitle = "untitled";
-                }
+        HashMap<Integer, ArrayList<JSONArray>> noCollectionMap = digitalObjectMap.get(0);
+
+        if (collectionMap != null) {
+            digitalObjectList = collectionMap.get(contentID);
+            if (digitalObjectList == null) {
+                digitalObjectList = new ArrayList<JSONArray>();
             }
+        } else {
+            collectionMap = new HashMap<Integer, ArrayList<JSONArray>>();
+            digitalObjectList = new ArrayList<JSONArray>();
+        }
 
-            ArrayList<JSONArray> digitalObjectList = digitalObjectMap.get(recordKey);
+        if (noCollectionMap != null && noCollectionMap.containsKey(contentID)) {
+            digitalObjectList.addAll(noCollectionMap.get(contentID));
+            noCollectionMap.remove(contentID);
+        }
 
-            // to make sure digital objects aren't added twice if component is both intellectual and physical
-            digitalObjectMap.remove(recordKey);
+//        if(digitalObjectMap.containsKey(recordKey)) {
 
-            for(JSONArray batchJA: digitalObjectList) {
-                String digitalObjectURI = saveDigitalObject(batchEndpoint, batchJA);
-
-                if(digitalObjectURI != null) {
-                    JSONObject instanceJS = new JSONObject();
-                    instanceJS.put("instance_type", "digital_object");
-                    instanceJS.put("digital_object", mapper.getReferenceObject(digitalObjectURI));
-                    instancesJA.put(instanceJS);
-
-                    if (debug) print("Added Digital Object Instance to " + recordTitle);
-                }
+        if (recordTitle == null) {
+            try {
+                recordTitle = json.getString("title");
+            } catch (JSONException  e) {
+                recordTitle = "untitled";
             }
+        }
 
-            if (instancesJA.length() != 0) {
-                json.put("instances", instancesJA);
+//            ArrayList<JSONArray> digitalObjectList = digitalObjectMap.get(recordKey);
+
+        // to make sure digital objects aren't added twice if component is both intellectual and physical
+//            digitalObjectMap.remove(recordKey);
+        collectionMap.remove(contentID);
+
+        for(JSONArray batchJA: digitalObjectList) {
+            String digitalObjectURI = saveDigitalObject(batchEndpoint, batchJA);
+
+            if(digitalObjectURI != null) {
+                JSONObject instanceJS = new JSONObject();
+                instanceJS.put("instance_type", "digital_object");
+                instanceJS.put("digital_object", mapper.getReferenceObject(digitalObjectURI));
+                instancesJA.put(instanceJS);
+
+                if (debug) print("Added Digital Object Instance to " + recordTitle);
             }
+        }
+
+        if (instancesJA.length() != 0) {
+            json.put("instances", instancesJA);
         }
     }
 
@@ -2341,7 +2404,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
     }
 
     /**
-     * Method to add an instance to an Accession or Resource record whick hold location information
+     * Method to add an instance to an Accession or Resource record which hold location information
      *  @param recordJS
      * @param locations
      */
@@ -2396,16 +2459,29 @@ public class ASpaceCopyUtil implements  PrintConsole {
         }
     }
 
+    /**
+     * this attempts to tell if the location content is referring to multiple containers
+     * again, could be better but not worth increasing migration time too much
+     *
+     * @param indicatorsString
+     * @return
+     */
     private ArrayList<String> getContainerIndicators(String indicatorsString) {
         ArrayList<String> containerIndicators = new ArrayList<String>();
+
+        // split at commas since they probably indicate separate items
         String[] commasSplit = indicatorsString.split(",");
         for (String str: commasSplit) {
+
+            // a dash probably indicates a range
+            // if the items on either side are numbers use these numbers and if so add these and all in between
             if (str.contains("-")) {
                 String[] bounds = str.split("-");
                 if (bounds.length == 2) {
                     try {
                         int start = Integer.parseInt(bounds[0].trim());
                         int end = Integer.parseInt(bounds[1].trim());
+                        if (start >= end) throw new NumberFormatException();
                         for (int i = start; i <= end; i++) {
                             containerIndicators.add(i + "");
                         }
@@ -2420,6 +2496,18 @@ public class ASpaceCopyUtil implements  PrintConsole {
         return containerIndicators;
     }
 
+    /**
+     * creates an instance for a location that is linked to a resource/accession
+     *
+     * @param location
+     * @param instanceType
+     * @param containerType
+     * @param containerIndicator
+     * @param instancesJA
+     * @param topURIs
+     * @param repoURI
+     * @throws Exception
+     */
     public void createInstanceForLocation(JSONObject location, String instanceType, String containerType,
                                           String containerIndicator, JSONArray instancesJA,
                                           HashMap<String, String> topURIs, String repoURI) throws Exception {
@@ -2498,6 +2586,40 @@ public class ASpaceCopyUtil implements  PrintConsole {
             } else {
                 print("Fail -- Location: " + key);
                 return null;
+            }
+        }
+    }
+
+    /**
+     * if after going through all the resources a digital object liked resource/component is not found add it
+     *
+     * @throws Exception
+     */
+    public void copyDigitalObjectStragglers() throws Exception {
+
+        for (int rid : digitalObjectMap.keySet()) {
+
+            HashMap<Integer, ArrayList<JSONArray>> leftoverDOs = digitalObjectMap.get(rid);
+
+            if (leftoverDOs != null) {
+
+                String repoURI = getRepositoryURI(defaultRepositoryId);
+                String batchEndpoint = repoURI + ASpaceClient.BATCH_IMPORT_ENDPOINT;
+
+                for (int cid : leftoverDOs.keySet()) {
+                    ArrayList<JSONArray> digitalObjects = leftoverDOs.get(cid);
+                    String message = "Digital object linked resource/component not found: Resource " +
+                            rid + ", Component " + cid + "\nLinked to " + digitalObjects.size() +
+                            " digital object(s). Digital object(s) will be unlinked in stead.\n";
+                    addErrorMessage(message);
+
+                    for (JSONArray digitalObjectJA : digitalObjects) {
+                        saveDigitalObject(batchEndpoint, digitalObjectJA);
+                    }
+                }
+
+                // update the number of digital records that were copied
+                updateRecordTotals("Instance Digital Objects", digitalObjectTotal, digitalObjectSuccess);
             }
         }
     }

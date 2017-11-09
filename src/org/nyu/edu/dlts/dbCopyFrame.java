@@ -255,6 +255,8 @@ public class dbCopyFrame extends JFrame {
                         ascopy.copyCollectionRecords(collectionsToCopy);
                     }
 
+                    if (!copyStopped) ascopy.copyDigitalObjectStragglers();
+
                     // now download the digital object files
                     if(downloadCheckBox.isSelected()) {
                         ascopy.downloadDigitalObjectFiles(downloadDirectory);
@@ -554,7 +556,7 @@ public class dbCopyFrame extends JFrame {
         CellConstraints cc = new CellConstraints();
 
         //======== this ========
-        setTitle("Archon Data Migrator v1.0.2 (03-22-2017)");
+        setTitle("Archon Data Migrator v2.x (11-2017)");
         Container contentPane = getContentPane();
         contentPane.setLayout(new BorderLayout());
 
