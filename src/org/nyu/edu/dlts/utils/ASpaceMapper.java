@@ -219,7 +219,8 @@ public class ASpaceMapper {
         // add the country and country code together
         contactsJS.put("country", enumUtil.getASpaceCountryCode(repository.getInt("CountryID")));
 
-        String postCode = repository.get("ZIPCode") + "-" + repository.get("ZIPPlusFour");
+        String postCode = repository.getString("ZIPCode") + "";
+        if (!repository.getString("ZIPPlusFour").isEmpty()) postCode += "-" + repository.get("ZIPPlusFour");
         contactsJS.put("post_code", postCode);
 
         addPhoneNumbers(contactsJS, repository.getString("Phone"), repository.getString("PhoneExtension"),

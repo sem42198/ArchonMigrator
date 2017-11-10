@@ -1625,7 +1625,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                 // map of intellectual component IDs to their JSON objects
                 HashMap<String, JSONObject> intellectualComponents = new HashMap<String, JSONObject>();
-                HashMap<String, String> intellectualComponetParents = new HashMap<String, String>();
+                HashMap<String, String> intellectualComponentParents = new HashMap<String, String>();
 
                 // add any archival objects here
                 JSONObject resourceComponents = archonClient.getCollectionContentRecords(dbId);
@@ -1701,7 +1701,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                             }
 
                             // add mapping of component to parent
-                            intellectualComponetParents.put(cid, parentId + "");
+                            intellectualComponentParents.put(cid, parentId + "");
 
                             // add the subjects now
                             subjectAsCreatorsList = addSubjects(componentJS, component.getJSONArray("Subjects"), title);
@@ -1825,7 +1825,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 // add the components to the batch JA
                 HashSet<String> added = new HashSet<String>();
                 for (String cid : intellectualComponents.keySet()) {
-                    addComponentToBatch(cid, batchJA, intellectualComponetParents, intellectualComponents, added);
+                    addComponentToBatch(cid, batchJA, intellectualComponentParents, intellectualComponents, added);
                 }
 
                 // free some memory now
@@ -1874,11 +1874,11 @@ public class ASpaceCopyUtil implements  PrintConsole {
      *
      * @param cid
      * @param batchJA
-     * @param intellectualComponetParents
+     * @param intellectualComponentParents
      * @param intellectualComponents
      * @param added
      */
-    private void addComponentToBatch(String cid, JSONArray batchJA, HashMap<String, String> intellectualComponetParents,
+    private void addComponentToBatch(String cid, JSONArray batchJA, HashMap<String, String> intellectualComponentParents,
                                      HashMap<String, JSONObject> intellectualComponents, HashSet<String> added) {
 
         // make sure we don't add a duplicate
@@ -1889,18 +1889,18 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             // check that the parent relationship is valid
             while (!nextID.equals("0")) {
-                nextID = intellectualComponetParents.get(nextID);
+                nextID = intellectualComponentParents.get(nextID);
                 if (added.contains(nextID)) break;
                 if (++loopCount > 12 || nextID == null) {
                     intellectualComponents.get(cid).remove("parent");
-                    intellectualComponetParents.put(cid, "0");
+                    intellectualComponentParents.put(cid, "0");
                     break;
                 }
             }
 
             // unless it's a top level component make sure it's parent has been added to the batch array first
-            if (!intellectualComponetParents.get(cid).equals("0")) {
-                addComponentToBatch(intellectualComponetParents.get(cid), batchJA, intellectualComponetParents,
+            if (!intellectualComponentParents.get(cid).equals("0")) {
+                addComponentToBatch(intellectualComponentParents.get(cid), batchJA, intellectualComponentParents,
                         intellectualComponents, added);
             }
 
@@ -2429,9 +2429,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 String topContainerURI = null;
                 String containerKey = containerType + " " + containerIndicator;
 
-                if (!instanceType.equalsIgnoreCase("accession")) {
-                    topContainerURI = topContainerURIs.get(containerKey);
-                }
+                topContainerURI = topContainerURIs.get(containerKey);
 
                 if (topContainerURI == null) {
                     createInstanceForLocation(location, instanceType, containerType, containerIndicator, instancesJA,
@@ -2521,9 +2519,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         String containerURI = addTopContainer(containerType, containerIndicator, topURIs, repoURI,
                 location);
-        JSONObject contianerRef = mapper.getReferenceObject(containerURI);
+        JSONObject containerRef = mapper.getReferenceObject(containerURI);
 
-        containerJS.put("top_container", contianerRef);
+        containerJS.put("top_container", containerRef);
 
         instanceJS.put("sub_container", containerJS);
 
@@ -2979,7 +2977,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         String totalRecordsCopied = getTotalRecordsCopiedMessage();
 
-        print("\n\nFinish coping data ... Total time: " + stopWatch.getPrettyTime());
+        print("\n\nFinish copying data ... Total time: " + stopWatch.getPrettyTime());
         print("\nNumber of Records copied: \n" + totalRecordsCopied);
 
         print("\nNumber of errors/warnings: " + aspaceErrorCount);
