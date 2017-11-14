@@ -30,13 +30,13 @@ public class ASpaceMapper {
 
     // these store the ids of all accessions, resources, and digital objects loaded so we can
     // check for uniqueness before copying them to the ASpace backend
-    private ArrayList<String> digitalObjectIDs = new ArrayList<String>();
-    private ArrayList<String> accessionIDs = new ArrayList<String>();
-    private ArrayList<String> resourceIDs = new ArrayList<String>();
-    private ArrayList<String> eadIDs = new ArrayList<String>();
+    private HashSet<String> digitalObjectIDs = new HashSet<String>();
+    private HashSet<String> accessionIDs = new HashSet<String>();
+    private HashSet<String> resourceIDs = new HashSet<String>();
+    private HashSet<String> eadIDs = new HashSet<String>();
 
     // variable to keep track of filenames and their ids to make sure we have unique names
-    private ArrayList<String> digitalObjectFilenames = new ArrayList<String>();
+    private HashSet<String> digitalObjectFilenames = new HashSet<String>();
     private HashMap<String, String> fileIDsToFilenamesMap = new HashMap<String, String>();
 
     // some code used for testing
@@ -168,6 +168,9 @@ public class ASpaceMapper {
             // map the id to value
             String id = idPrefix + "_" + enumJS.get("ID");
             enumUtil.addIdAndValueToEnumList(id, value);
+            if (idPrefix.equals("container_types")) {
+                aspaceCopyUtil.addContainerTypeValueToIDMapping(value, enumJS.getString("ID"));
+            }
 
             // see if to add this to aspace
             if(!valuesList.contains(value)) {
@@ -216,7 +219,8 @@ public class ASpaceMapper {
         // add the country and country code together
         contactsJS.put("country", enumUtil.getASpaceCountryCode(repository.getInt("CountryID")));
 
-        String postCode = repository.get("ZIPCode") + "-" + repository.get("ZIPPlusFour");
+        String postCode = repository.getString("ZIPCode") + "";
+        if (!repository.getString("ZIPPlusFour").isEmpty()) postCode += "-" + repository.get("ZIPPlusFour");
         contactsJS.put("post_code", postCode);
 
         addPhoneNumbers(contactsJS, repository.getString("Phone"), repository.getString("PhoneExtension"),
@@ -287,6 +291,7 @@ public class ASpaceMapper {
         json.put("name", fixEmptyString(record.getString("Name")));
         json.put("org_code", record.get("Code"));
         json.put("url", fixUrl(record.getString("URL")));
+        json.put("publish", true);
 
         if(agentURI != null) {
             json.put("agent_representation", getReferenceObject(agentURI));
