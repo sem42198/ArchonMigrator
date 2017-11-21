@@ -1328,32 +1328,19 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 }
 
                 // check to see we just not saving the digital objects or copying them now
-//                String digitalObjectListKey = null;
                 int collectionID = 0;
                 int contentID = 0;
 
                 if(saveDigitalObjectsWithResources) {
                     collectionID = digitalObject.getInt("CollectionID");
                     contentID = digitalObject.getInt("CollectionContentID");
-//                    if(digitalObject.getInt("CollectionID") != 0) {
-//                        if(digitalObject.getInt("CollectionContentID") != 0) {
-//                            digitalObjectListKey = "content_" + digitalObject.get("CollectionContentID");
-//                        } else {
-//                            digitalObjectListKey = "collection_" + digitalObject.get("CollectionID");
-//                        }
-//                    } else {
-//                        print("No record to attach digital object " + digitalObjectTitle + "...");
-//                        print("Saving to default repository ...");
-//                    }
                 }
 
                 // call methods to actually save this digital object to the back end
                 // or store it for saving when saving the resource records
-//                if(digitalObjectListKey != null) {
                 if (collectionID != 0 || contentID != 0) {
                     digitalObjectTotal++;
                     storeDigitalObject(batchJA, collectionID, contentID);
-//                    storeDigitalObject(batchJA, digitalObjectListKey);
                 } else {
 
                     print("No record to attach digital object " + digitalObjectTitle + "...");
@@ -1434,12 +1421,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
             digitalObjectList = new ArrayList<JSONArray>();
             collectionMap.put(contentID, digitalObjectList);
         }
-
-//        if(digitalObjectMap.containsKey(digitalObjectListKey)) {
-//            digitalObjectList = digitalObjectMap.get(digitalObjectListKey);
-//        } else {
-//            digitalObjectMap.put(digitalObjectListKey, digitalObjectList);
-//        }
 
         digitalObjectList.add(batchJA);
     }
@@ -1608,7 +1589,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 }
 
                 // add the instances
-//                addDigitalInstances(resourceJS, "collection_" + dbId, collectionTitle, batchEndpoint);
                 addDigitalInstances(resourceJS, intID, 0, collectionTitle, batchEndpoint);
 
                 // add the linked accessions
@@ -1713,7 +1693,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
                             addSubjectsAsCreators(linkedAgentsJA, subjectAsCreatorsList, title);
 
                             // add the digital instances
-//                            addDigitalInstances(componentJS, "content_" + cid, collectionTitle, batchEndpoint);
                             addDigitalInstances(componentJS, intID, Integer.parseInt(cid), collectionTitle, batchEndpoint);
 
                             // save this json record now to get the URI
@@ -1738,8 +1717,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
                         Stack<JSONObject> componentChain = new Stack<JSONObject>();
                         String nextComponentID = cid;
 
+                        // fail safe to make sure we don't get stuck in an infinite loop
+                        int loopCount = 0;
+
                         // find the intellectual parent and physical hierarchy
                         while (!nextComponentID.equals("0")) {
+
+                            if (++loopCount > 12) break;
 
                             JSONObject nextComponent;
                             try {
@@ -1753,7 +1737,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                             // if it is a physical component add it to the stack
                             if (nextComponent.getInt("ContentType") != 1) {
 
-                                // check to be sure we're not stuck in an infinite loop
+                                // usually earliest way to tell if we are stuck in infinate loop
                                 if (!componentChain.contains(nextComponent)) componentChain.push(nextComponent);
                                 else break;
                             }
@@ -1788,7 +1772,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                     // add any digital objects linked to the physical component in archon
                     // they linked to the component's parent in ASpace since digital object can't be linked to container
-//                    addDigitalInstances(parentJSON, "content_" + id, null, batchEndpoint);
                     addDigitalInstances(parentJSON, intID, Integer.parseInt(id), null, batchEndpoint);
                 }
 
@@ -2143,8 +2126,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
             noCollectionMap.remove(contentID);
         }
 
-//        if(digitalObjectMap.containsKey(recordKey)) {
-
         if (recordTitle == null) {
             try {
                 recordTitle = json.getString("title");
@@ -2153,10 +2134,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
             }
         }
 
-//            ArrayList<JSONArray> digitalObjectList = digitalObjectMap.get(recordKey);
 
         // to make sure digital objects aren't added twice if component is both intellectual and physical
-//            digitalObjectMap.remove(recordKey);
         collectionMap.remove(contentID);
 
         for(JSONArray batchJA: digitalObjectList) {
@@ -2977,7 +2956,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         String totalRecordsCopied = getTotalRecordsCopiedMessage();
 
-        print("\n\nFinish copying data ... Total time: " + stopWatch.getPrettyTime());
+        print("\n\nFinished copying data ... Total time: " + stopWatch.getPrettyTime());
         print("\nNumber of Records copied: \n" + totalRecordsCopied);
 
         print("\nNumber of errors/warnings: " + aspaceErrorCount);

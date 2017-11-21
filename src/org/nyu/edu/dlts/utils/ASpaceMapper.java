@@ -940,7 +940,7 @@ public class ASpaceMapper {
         if(!classificationID.equals("0") && classificationIdPartsMap.get(classificationID) != null) {
             String[] sa = classificationIdPartsMap.get(classificationID).split("/");
 
-            // this can be placed in a loop but lets keep it nice an clear?
+            // this can be placed in a loop but lets keep it nice and clear?
             if(sa.length == 1) {
                 idParts[0] = sa[0];
                 idParts[1]  = id;
