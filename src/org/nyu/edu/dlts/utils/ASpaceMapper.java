@@ -292,6 +292,7 @@ public class ASpaceMapper {
         json.put("org_code", record.get("Code"));
         json.put("url", fixUrl(record.getString("URL")));
         json.put("publish", true);
+        json.put("country", enumUtil.getASpaceCountryCode(record.getInt("CountryID")));
 
         if(agentURI != null) {
             json.put("agent_representation", getReferenceObject(agentURI));
@@ -1224,45 +1225,6 @@ public class ASpaceMapper {
 
         // add the notes
         addResourceComponentNotes(record, json);
-
-        return json;
-    }
-
-    /**
-     * Method to convert container information for physical only component
-     * into a component
-     *
-     * @param aoEndpoint
-     * @param containerList
-     * @return
-     * @throws Exception
-     */
-    public JSONObject convertContainerInformation(String aoEndpoint, ArrayList<String> containerList) throws Exception {
-        String[] sa = containerList.get(0).split("::");
-
-        // Main json object
-        JSONObject json = new JSONObject();
-
-        json.put("uri", aoEndpoint + "/" + sa[2]);
-        json.put("jsonmodel_type", "archival_object");
-
-        json.put("publish", publishRecord);
-
-
-        /* Add fields needed for abstract_archival_object.rb */
-
-        // check to make sure we have a title
-        String title = WordUtils.capitalize(sa[0] + " " + sa[1]);
-        json.put("title", title);
-
-        /* add field required for archival_object.rb */
-        json.put("level", "item");
-
-        // make the ref id unique otherwise ASpace complains
-        String refId = sa[2];
-        json.put("ref_id", refId);
-
-        json.put("position", new Integer(sa[3]));
 
         return json;
     }

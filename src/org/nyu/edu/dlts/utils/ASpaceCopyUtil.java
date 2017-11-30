@@ -684,15 +684,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 case 19:
                 case 21:
                 case 23:
-                    // add any relationships if needed
-                    if(creator.has("CreatorRelationships") && !creator.get("CreatorRelationships").equals(null)) {
-                        try {
-                            addCreatorRelationShips(records, creator, agentJS);
-                        } catch(Exception e) {
-                            print("Invalid Relationship Record For: " + creator.getString("Name"));
-                        }
-                    }
-
                     id = saveRecord(ASpaceClient.AGENT_PEOPLE_ENDPOINT, agentJS.toString(), "Creator_Person->" + creator.getString("Name"));
                     uri = ASpaceClient.AGENT_PEOPLE_ENDPOINT + "/" + id;
                     break;
@@ -722,6 +713,23 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         updateRecordTotals("Names", total, success);
 
+        print("Adding related creator relationships ...");
+        for (String key : invertedKeys) {
+            JSONObject creator = records.getJSONObject(key);
+            // add any relationships if needed
+            if(creator.has("CreatorRelationships") && creator.get("CreatorRelationships")!= null) {
+                try {
+                    String arId = creator.getString("ID");
+                    String uri = nameURIMap.get(arId);
+                    JSONObject agentJS = new JSONObject(aspaceClient.get(uri, null));
+                    addCreatorRelationShips(records, creator, agentJS);
+                    saveRecord(uri, agentJS.toString(), "Creator->" + creator.getString("Name"));
+                } catch(Exception e) {
+                    print("Invalid Relationship Record For: " + creator.getString("Name"));
+                }
+            }
+        }
+
         // refresh the database connection to prevent heap space error
         freeMemory();
     }
@@ -735,6 +743,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
      */
     private void addCreatorRelationShips(JSONObject records, JSONObject creator, JSONObject agentJS) throws Exception {
         JSONArray relationships = creator.getJSONArray("CreatorRelationships");
+        int creatorTypeID = creator.getInt("CreatorTypeID");
 
         JSONArray relatedAgentsJA = new JSONArray();
 
@@ -747,7 +756,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             String relatedCreatorID = relatedCreator.getString("ID");
 
-            int creatorTypeID = relatedCreator.getInt("CreatorTypeID");
+            int relatedCreatorTypeID = relatedCreator.getInt("CreatorTypeID");
             String uri = nameURIMap.get(relatedCreatorID);
 
             if (uri == null) {
@@ -755,120 +764,63 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 continue;
             }
 
-            if (creatorRelationshipTypeID == 2) {
-                switch (creatorTypeID) {
-                    case 19:
-                    case 21:
-                    case 23:
-                        JSONObject agentRelationJS = new JSONObject();
+            JSONObject agentRelationJS = new JSONObject();
+            agentRelationJS.put("ref", uri);
+            if (relationship.has("Description")) {
+                String description = relationship.getString("Description");
+                if (!description.equals("null")) agentRelationJS.put("description", relationship.getString("Description"));
+            }
 
-                        agentRelationJS.put("jsonmodel_type", "agent_relationship_parentchild");
-                        agentRelationJS.put("relator", "is_parent_of");
-                        agentRelationJS.put("ref", uri);
-                        relatedAgentsJA.put(agentRelationJS);
-
-                        System.out.println("Adding relationship " + relationship.toString());
-                        break;
-                    case 22:
-                        agentRelationJS = new JSONObject();
-
+            switch (creatorRelationshipTypeID) {
+                case 4:
+                    // agent_relationship_earlierlater :: is_earlier_form_of
+                    agentRelationJS.put("jsonmodel_type", "agent_relationship_earlierlater");
+                    agentRelationJS.put("relator", "is_earlier_form_of");
+                    break;
+                case 5:
+                    // agent_relationship_earlierlater :: is_later_form_of
+                    agentRelationJS.put("jsonmodel_type", "agent_relationship_earlierlater");
+                    agentRelationJS.put("relator", "is_later_form_of");
+                    break;
+                case 2:
+                    if (creatorTypeID == 19 || creatorTypeID == 21 || creatorTypeID == 23) {
+                        if (relatedCreatorTypeID == 19 || relatedCreatorTypeID == 21 || relatedCreatorTypeID == 23) {
+                            // agent_relationship_parentchild :: is_parent_of
+                            agentRelationJS.put("jsonmodel_type", "agent_relationship_parentchild");
+                            agentRelationJS.put("relator", "is_parent_of");
+                            break;
+                        }
+                    }
+                    if (creatorTypeID == 22 && relatedCreatorTypeID == 22) {
+                        // agent_relationship_subordinatesuperior :: is_superior_of
                         agentRelationJS.put("jsonmodel_type", "agent_relationship_subordinatesuperior");
                         agentRelationJS.put("relator", "is_superior_of");
-                        agentRelationJS.put("ref", uri);
-                        relatedAgentsJA.put(agentRelationJS);
-
-                        System.out.println("Adding relationship " + relationship.toString());
                         break;
-                    default:
-                        System.out.println("Unable to create a parent-child relationship for Creator " + relatedCreatorID + " - this creator is not a person.");
-                        break;
-                }
-            } else if (creatorRelationshipTypeID == 3) {
-                switch (creatorTypeID) {
-                    case 19:
-                    case 21:
-                    case 23:
-                        JSONObject agentRelationJS = new JSONObject();
-
-                        agentRelationJS.put("jsonmodel_type", "agent_relationship_parentchild");
-                        agentRelationJS.put("relator", "is_child_of");
-                        agentRelationJS.put("ref", uri);
-                        relatedAgentsJA.put(agentRelationJS);
-
-                        System.out.println("Adding relationship " + relationship.toString());
-                        break;
-                    case 22:
-                        agentRelationJS = new JSONObject();
-
+                    }
+                case 3:
+                    if (creatorTypeID == 19 || creatorTypeID == 21 || creatorTypeID == 23) {
+                        if (relatedCreatorTypeID == 19 || relatedCreatorTypeID == 21 || relatedCreatorTypeID == 23) {
+                            // agent_relationship_parentchild :: is_child_of
+                            agentRelationJS.put("jsonmodel_type", "agent_relationship_parentchild");
+                            agentRelationJS.put("relator", "is_child_of");
+                            break;
+                        }
+                    }
+                    if (creatorTypeID == 22 && relatedCreatorTypeID == 22) {
+                        // agent_relationship_subordinatesuperior :: is_subordinate_to
                         agentRelationJS.put("jsonmodel_type", "agent_relationship_subordinatesuperior");
                         agentRelationJS.put("relator", "is_subordinate_to");
-                        agentRelationJS.put("ref", uri);
-                        relatedAgentsJA.put(agentRelationJS);
-
-                        System.out.println("Adding relationship " + relationship.toString());
                         break;
-                    default:
-                        System.out.println("Unable to create a child-parent relationship for Creator " + relatedCreatorID + " - this creator is not a person.");
-                        break;
-                }
-            } else if (creatorRelationshipTypeID == 4) {
-                switch (creatorTypeID) {
-                    case 19:
-                    case 21:
-                    case 22:
-                    case 23:
-                        JSONObject agentRelationJS = new JSONObject();
-
-                        agentRelationJS.put("jsonmodel_type", "agent_relationship_earlierlater");
-                        agentRelationJS.put("relator", "is_earlier_form_of");
-                        agentRelationJS.put("ref", uri);
-                        relatedAgentsJA.put(agentRelationJS);
-
-                        System.out.println("Adding relationship " + relationship.toString());
-                        break;
-                    default:
-                        System.out.println("Unable to create a earlier_form_of relationship for Creator " + relatedCreatorID + " - this creator is not a person.");
-                        break;
-                }
-            } else if (creatorRelationshipTypeID == 5) {
-                switch (creatorTypeID) {
-                    case 19:
-                    case 21:
-                    case 22:
-                    case 23:
-                        JSONObject agentRelationJS = new JSONObject();
-
-                        agentRelationJS.put("jsonmodel_type", "agent_relationship_earlierlater");
-                        agentRelationJS.put("relator", "is_later_form_of");
-                        agentRelationJS.put("ref", uri);
-                        relatedAgentsJA.put(agentRelationJS);
-
-                        System.out.println("Adding relationship " + relationship.toString());
-                        break;
-                    default:
-                        System.out.println("Unable to create a earlier_form_of relationship for Creator " + relatedCreatorID + " - this creator is not a person.");
-                        break;
-                }
-            } else if (creatorRelationshipTypeID == 7) {
-                switch (creatorTypeID) {
-                    case 19:
-                    case 21:
-                    case 22:
-                    case 23:
-                        JSONObject agentRelationJS = new JSONObject();
-
-                        agentRelationJS.put("jsonmodel_type", "agent_relationship_associative");
-                        agentRelationJS.put("relator", "is_associative_with");
-                        agentRelationJS.put("ref", uri);
-                        relatedAgentsJA.put(agentRelationJS);
-
-                        System.out.println("Adding relationship " + relationship.toString());
-                        break;
-                    default:
-                        System.out.println("Unable to create a associative relationship for Creator " + relatedCreatorID + " - this creator is not a person.");
-                        break;
-                }
+                    }
+                default:
+                    // agent_relationship_associative :: is_associative_with
+                    agentRelationJS.put("jsonmodel_type", "agent_relationship_associative");
+                    agentRelationJS.put("relator", "is_associative_with");
             }
+
+            relatedAgentsJA.put(agentRelationJS);
+
+            System.out.println("Adding relationship " + relationship.toString());
         }
 
         if(relatedAgentsJA.length() > 0) {
@@ -1176,6 +1128,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 String repoURI = getAccessionRepositoryURI(arId);
 
                 // add the subjects
+                // TODO perhaps the result of this shouldn't be ignored. Subjects that become agents could be attached
                 addSubjects(accessionJS, accession.getJSONArray("Subjects"), accessionTitle);
 
                 // add the linked agents aka Names records
@@ -1553,9 +1506,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             // create the batch import JSON array in case we need it
             JSONArray batchJA = new JSONArray();
-
-            // hashmap used to store components so tree can be generated and sort orders be corrected
-            HashMap<String, JSONObject> parentMap = new HashMap<String, JSONObject>();
 
             // we need to update the progress bar here
             updateProgress("Collection Records", total, count);
