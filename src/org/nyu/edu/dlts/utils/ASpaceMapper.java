@@ -1444,6 +1444,16 @@ public class ASpaceMapper {
     private void addMultipartNote(JSONArray notesJA, String noteType, String noteLabel, String noteContent) throws Exception {
         if(noteContent.isEmpty() || noteType.isEmpty()) return;
 
+        // these note types don't exist in ASpace
+        if (noteType.equals("unitid") || noteType.equals("origination") || noteType.equals("note")) noteType = "odd";
+
+        // these note types should be single part
+        if (noteType.equals("physfacet") || noteType.equals("physdesc") || noteType.equals("langmaterial") ||
+                noteType.equals("materialspec")) {
+            addSinglePartNote(notesJA, noteType, noteLabel, noteContent);
+            return;
+        }
+
         JSONObject noteJS = new JSONObject();
 
         noteJS.put("jsonmodel_type", "note_multipart");
