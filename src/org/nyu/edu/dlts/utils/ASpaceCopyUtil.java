@@ -1581,6 +1581,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 // map a physical component ID with that components hierarchy of physical components (for containers)
                 HashMap<String, Stack<JSONObject>> physicalComponentsData = new HashMap<String, Stack<JSONObject>>();
 
+                // stores string keys
+                HashMap<String, TreeSet<String>> sortKeysByParent = new HashMap<String, TreeSet<String>>();
+
                 Iterator<String> ckeys = resourceComponents.sortedKeys();
                 while (ckeys.hasNext()) {
                     JSONObject component = resourceComponents.getJSONObject(ckeys.next());
@@ -1601,6 +1604,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                             String nextComponentID = component.getString("ParentID");
                             int loopCount = 0;
+                            String sortKey = Character.toString((char) component.getInt("SortOrder"));
 
                             // find the first intellectual parent component if there is one
                             while (!nextComponentID.equals("0")) {
@@ -1626,6 +1630,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
                                 if (nextComponent.getInt("ContentType") != 2) {
                                     parentId = nextComponent.getInt("ID");
                                     break;
+                                } else {
+                                    char nextSortKey = (char) nextComponent.getInt("SortOrder");
+                                    sortKey = nextSortKey + sortKey;
                                 }
 
                                 // otherwise try again with that component's parent
@@ -1641,6 +1648,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                             // add mapping of component to parent
                             intellectualComponentParents.put(cid, parentId + "");
+
+                            // add the sort key so the position can be calculated
+                            componentJS.put("sort_key", sortKey);
+                            if (!sortKeysByParent.containsKey(parentId + "")) {
+                                sortKeysByParent.put(parentId + "", new TreeSet<String>());
+                            }
+                            sortKeysByParent.get(parentId + "").add(sortKey);
 
                             // add the subjects now
                             subjectAsCreatorsList = addSubjects(componentJS, component.getJSONArray("Subjects"), title);
@@ -1764,9 +1778,11 @@ public class ASpaceCopyUtil implements  PrintConsole {
                     addErrorMessage(errorMessage.toString());
                 }
 
-                // add the components to the batch JA
+                // add the component positions and add them to the batch JA
                 HashSet<String> added = new HashSet<String>();
                 for (String cid : intellectualComponents.keySet()) {
+                    JSONObject componentJS = intellectualComponents.get(cid);
+                    addComponentPosition(componentJS, cid, intellectualComponentParents, sortKeysByParent);
                     addComponentToBatch(cid, batchJA, intellectualComponentParents, intellectualComponents, added);
                 }
 
@@ -1809,6 +1825,19 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         // update the number of resource actually copied
         updateRecordTotals("Collections", total, copyCount);
+    }
+
+    private void addComponentPosition(JSONObject componentJS, String cID,
+                                      HashMap<String, String> intellectualComponentParents,
+                                      HashMap<String, TreeSet<String>> sortKeysByParent) throws JSONException {
+        String parentID = "0";
+        if (intellectualComponentParents.containsKey(cID)) parentID = intellectualComponentParents.get(cID);
+        String sortKey = componentJS.getString("sort_key");
+        TreeSet<String> parentKeys = sortKeysByParent.get(parentID);
+        if (parentKeys != null) {
+            int position = parentKeys.headSet(sortKey, true).size();
+            componentJS.put("position", position * 1000);
+        }
     }
 
     /**
