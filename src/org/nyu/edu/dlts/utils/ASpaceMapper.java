@@ -215,6 +215,7 @@ public class ASpaceMapper {
         contactsJS.put("address_1", repository.get("Address"));
         contactsJS.put("address_2", repository.get("Address2"));
         contactsJS.put("city", repository.get("City"));
+        contactsJS.put("region", repository.get("State"));
 
         // add the country and country code together
         contactsJS.put("country", enumUtil.getASpaceCountryCode(repository.getInt("CountryID")));
@@ -898,11 +899,12 @@ public class ASpaceMapper {
      * Method to convert an collection record to json ASpace JSON
      *
      * @param record
-     * @param classificationIdPartsMap
+     * @param classificationIdentifiers
      * @return
      * @throws Exception
      */
-    public JSONObject convertCollection(JSONObject record, HashMap<String, String> classificationIdPartsMap) throws Exception {
+    public JSONObject convertCollection(JSONObject record, HashMap<String, String> classificationIdentifiers,
+                                        HashMap<String, String> classificationParents) throws Exception {
         // Main json object
         JSONObject json = new JSONObject();
 
@@ -935,29 +937,34 @@ public class ASpaceMapper {
 
         // get the ids and make them unique if we in DEBUG mode
         String id = record.getString("CollectionIdentifier");
+
+        // if the collection ID is empty fix it
+        if (id == null || id.isEmpty()) {
+            id = "##" + randomString.nextString();
+            while (resourceIDs.contains(id)) {
+                id = "##" + randomString.nextString();
+            }
+            aspaceCopyUtil.addErrorMessage("Empty collection ID. Changed to " + id + "\n");
+        }
+
         String classificationID = record.getString("ClassificationID");
         String[] idParts = new String[]{"", "", "", ""};
 
-        if(!classificationID.equals("0") && classificationIdPartsMap.get(classificationID) != null) {
-            String[] sa = classificationIdPartsMap.get(classificationID).split("/");
-
-            // this can be placed in a loop but lets keep it nice and clear?
-            if(sa.length == 1) {
-                idParts[0] = sa[0];
-                idParts[1]  = id;
-            } else if(sa.length == 2) {
-                idParts[0] = sa[0];
-                idParts[1] = sa[1];
-                idParts[2] = id;
-            } else if (sa.length == 3) {
-                idParts[0] = sa[0];
-                idParts[1] = sa[1];
-                idParts[2] = sa[2];
-                idParts[3] = id;
-            }
-        } else {
-            idParts[0] = id;
+        Stack<String> fullId = new Stack<String>();
+        fullId.push(id);
+        String cId = classificationID;
+        while (cId != null) {
+            String identifier = classificationIdentifiers.get(cId);
+            if (identifier == null) break;
+            fullId.push(identifier);
+            cId = classificationParents.get(cId);
         }
+
+        idParts[0] = fullId.pop();
+        if (!fullId.isEmpty()) idParts[1] = fullId.pop();
+        if (!fullId.isEmpty()) idParts[2] = fullId.pop();
+        while (fullId.size() > 1) idParts[2] += " " + fullId.pop();
+        if (!fullId.isEmpty()) idParts[3] = fullId.pop();
 
         // make sure the id is unique
         getUniqueID(ASpaceClient.RESOURCE_ENDPOINT, "", idParts, title);

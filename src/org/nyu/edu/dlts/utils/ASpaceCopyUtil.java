@@ -68,7 +68,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
     private HashMap<String, String> classificationTermURIMap = new HashMap<String, String>();
 
     // hashmap that maps classification and classification term ids to make it easy to construct
-    private HashMap<String, String> classificationIdPartsMap = new HashMap<String, String>();
+    private HashMap<String, String> classificationIdentifiers = new HashMap<String, String>();
+    private HashMap<String, String> classificationParents = new HashMap<String, String>();
 
     // hashset to keep track of classifications ids which have been linked to a record
     // so un-liked classifications can be clean deleted
@@ -951,7 +952,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
             JSONArray classificationChildren = classification.getJSONArray("children");
 
             // add the id for this classification
-            classificationIdPartsMap.put(arId, classification.getString("id_parts"));
+            classificationIdentifiers.put(arId, classification.getString("ClassificationIdentifier"));
 
             for (int i = 0; i < classificationChildren.length(); i++) {
                 if (stopCopy) return 0;
@@ -967,14 +968,15 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 String classificationTermURI = repoURI + ASpaceClient.CLASSIFICATION_TERM_ENDPOINT + "/" + cId;
                 classificationTermURIs.add(classificationTermURI);
 
-                classificationIdPartsMap.put(cId, classificationTerm.getString("id_parts"));
+                classificationIdentifiers.put(cId, classificationTerm.getString("ClassificationIdentifier"));
+                String pId = classificationTerm.getString("ParentID");
+                classificationParents.put(cId, pId);
 
                 if (classificationTermJS != null) {
                     classificationTermJS.put("uri", classificationTermURI);
 
                     classificationTermJS.put("classification", mapper.getReferenceObject(classificationURI));
 
-                    String pId = classificationTerm.getString("ParentID");
                     if (!pId.equals(arId)) {
                         String parentURI = repoURI + ASpaceClient.CLASSIFICATION_TERM_ENDPOINT + "/" + pId;
                         classificationTermJS.put("parent", mapper.getReferenceObject(parentURI));
@@ -1514,7 +1516,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
             print("Copying Collection: " + collectionTitle + " ,DB_ID: " + dbId);
 
             // get the main json object
-            JSONObject resourceJS = mapper.convertCollection(collection, classificationIdPartsMap);
+            JSONObject resourceJS = mapper.convertCollection(collection, classificationIdentifiers, classificationParents);
 
             if (resourceJS != null) {
                 String repoURI = getRepositoryURI(repositoryID);
