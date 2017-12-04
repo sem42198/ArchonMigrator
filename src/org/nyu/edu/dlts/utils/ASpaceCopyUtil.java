@@ -301,15 +301,18 @@ public class ASpaceCopyUtil implements  PrintConsole {
             String enumEndpoint = keys.next();
             JSONObject enumList = enumsJS.getJSONObject(enumEndpoint);
 
-            JSONObject updatedEnumJS = mapper.mapEnumList(enumList, enumEndpoint);
+            ArrayList<JSONObject> updatedEnums = mapper.mapEnumList(enumList, enumEndpoint);
 
-            if(updatedEnumJS != null && !enumEndpoint.contains("enum_type=countries")) {
-                String endpoint = updatedEnumJS.getString("uri");
-                String jsonText = updatedEnumJS.toString();
-                String id = saveRecord(endpoint, jsonText, "EnumList->" + enumEndpoint);
+            for (JSONObject updatedEnumJS : updatedEnums) {
 
-                if (!id.equalsIgnoreCase(NO_ID)) {
-                    print("Copied Enum List Values: " + enumEndpoint + " :: " + id);
+                if (updatedEnumJS != null && !enumEndpoint.contains("enum_type=countries")) {
+                    String endpoint = updatedEnumJS.getString("uri");
+                    String jsonText = updatedEnumJS.toString();
+                    String id = saveRecord(endpoint, jsonText, "EnumList->" + enumEndpoint);
+
+                    if (!id.equalsIgnoreCase(NO_ID)) {
+                        print("Copied Enum List Values: " + enumEndpoint + " :: " + id);
+                    }
                 }
             }
 
@@ -841,7 +844,6 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             subject.put("ID", key);
             subject.put("Name", sortName);
-            subject.put("CreatorSourceID", 99); // this will get set to local
 
             if(subjectTypeID == 8) {
                 // this is a person agent
@@ -1130,11 +1132,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 String repoURI = getAccessionRepositoryURI(arId);
 
                 // add the subjects
-                // TODO perhaps the result of this shouldn't be ignored. Subjects that become agents could be attached
-                addSubjects(accessionJS, accession.getJSONArray("Subjects"), accessionTitle);
+                ArrayList<String> subjectAsCreatorsList = addSubjects(accessionJS, accession.getJSONArray("Subjects"), accessionTitle);
 
                 // add the linked agents aka Names records
                 JSONArray linkedAgentsJA = addCreators(accessionJS, accession.getJSONArray("Creators"), accessionTitle);
+
+                // add the agent subjects
+                addSubjectsAsCreators(linkedAgentsJA, subjectAsCreatorsList, accessionTitle);
 
                 // add the donors
                 if(accession.has("Donor") && !accession.getString("Donor").isEmpty()) {
@@ -1249,10 +1253,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 batchJA.put(digitalObjectJS);
 
                 // add the subjects
-                addSubjects(digitalObjectJS, digitalObject.getJSONArray("Subjects"), digitalObjectTitle);
+                ArrayList<String> subjectAsCreatorsList = addSubjects(digitalObjectJS, digitalObject.getJSONArray("Subjects"), digitalObjectTitle);
 
                 // add the linked agents aka Names records
-                addCreators(digitalObjectJS, digitalObject.getJSONArray("Creators"), digitalObjectTitle);
+                JSONArray linkedAgentsJA = addCreators(digitalObjectJS, digitalObject.getJSONArray("Creators"), digitalObjectTitle);
+
+                // add the agent subjects
+                addSubjectsAsCreators(linkedAgentsJA, subjectAsCreatorsList, digitalObjectTitle);
 
                 // add any archival objects here
                 JSONArray digitalObjectChildren = digitalObject.getJSONArray("components");

@@ -128,68 +128,72 @@ public class ASpaceMapper {
      * @param enumList
      * @return
      */
-    public JSONObject mapEnumList(JSONObject enumList, String endpoint) throws Exception {
+    public ArrayList<JSONObject> mapEnumList(JSONObject enumList, String endpoint) throws Exception {
         // first we get the correct dynamic enum based on list. If it null then we just return null
-        JSONObject dynamicEnumJS = enumUtil.getDynamicEnum(endpoint);
+        ArrayList<JSONObject> dynamicEnums = enumUtil.getDynamicEnum(endpoint);
+        ArrayList<JSONObject> dynamicEnumsUpdated = new ArrayList<JSONObject>();
 
-        if(dynamicEnumJS == null) return null;
+        for (JSONObject dynamicEnumJS : dynamicEnums) {
 
-        // add the values return from aspace enum an arraylist to make lookup easier
-        JSONArray valuesJA = dynamicEnumJS.getJSONArray("values");
-        ArrayList<String> valuesList = new ArrayList<String>();
-        for(int i = 0; i < valuesJA.length(); i++) {
-            valuesList.add(valuesJA.getString(i));
-        }
+            if (dynamicEnumJS == null) return dynamicEnumsUpdated;
 
-        // now see if all the archon values are in the ASpace list already
-        // if they are not then add them
-        String valueKey = dynamicEnumJS.getString("valueKey");
-        String idPrefix = dynamicEnumJS.getString("idPrefix");
-
-        boolean toLowerCase = true;
-        if(dynamicEnumJS.has("keepValueCase")) {
-            toLowerCase = false;
-        }
-
-        int count = 0;
-        Iterator<String> keys = enumList.keys();
-        while(keys.hasNext()) {
-            JSONObject enumJS = enumList.getJSONObject(keys.next());
-            String value = enumJS.getString(valueKey);
-
-            // most values in ASpace are lower case so normalize
-            if(toLowerCase) {
-                value = value.toLowerCase();
+            // add the values return from aspace enum an arraylist to make lookup easier
+            JSONArray valuesJA = dynamicEnumJS.getJSONArray("values");
+            ArrayList<String> valuesList = new ArrayList<String>();
+            for (int i = 0; i < valuesJA.length(); i++) {
+                valuesList.add(valuesJA.getString(i));
             }
 
-            // some values have spaces which space normally uses underscore for
-            value = value.replace(" ", "_");
+            // now see if all the archon values are in the ASpace list already
+            // if they are not then add them
+            String valueKey = dynamicEnumJS.getString("valueKey");
+            String idPrefix = dynamicEnumJS.getString("idPrefix");
 
-            // map the id to value
-            String id = idPrefix + "_" + enumJS.get("ID");
-            enumUtil.addIdAndValueToEnumList(id, value);
-            if (idPrefix.equals("container_types")) {
-                aspaceCopyUtil.addContainerTypeValueToIDMapping(value, enumJS.getString("ID"));
+            boolean toLowerCase = true;
+            if (dynamicEnumJS.has("keepValueCase")) {
+                toLowerCase = false;
             }
 
-            // see if to add this to aspace
-            if(!valuesList.contains(value)) {
-                valuesJA.put(value);
-                count++;
-                System.out.println("Adding value " + value);
+            int count = 0;
+            Iterator<String> keys = enumList.keys();
+            while (keys.hasNext()) {
+                JSONObject enumJS = enumList.getJSONObject(keys.next());
+                String value = enumJS.getString(valueKey);
+
+                // most values in ASpace are lower case so normalize
+                if (toLowerCase) {
+                    value = value.toLowerCase();
+                }
+
+                // some values have spaces which space normally uses underscore for
+                value = value.replace(" ", "_");
+
+                // map the id to value
+                String id = idPrefix + "_" + enumJS.get("ID");
+                enumUtil.addIdAndValueToEnumList(id, value);
+                if (idPrefix.equals("container_types")) {
+                    aspaceCopyUtil.addContainerTypeValueToIDMapping(value, enumJS.getString("ID"));
+                }
+
+                // see if to add this to aspace
+                if (!valuesList.contains(value)) {
+                    valuesJA.put(value);
+                    count++;
+                    System.out.println("Adding value " + value);
+                }
+            }
+
+            // need to add other to extent unit type enum list
+            if (endpoint.contains("extentunits")) {
+                valuesJA.put(ASpaceEnumUtil.UNMAPPED);
+            }
+
+
+            if (count != 0) {
+                dynamicEnumsUpdated.add(dynamicEnumJS);
             }
         }
-
-        // need to add other to extent unit type enum list
-        if(endpoint.contains("extentunits")) {
-            valuesJA.put(ASpaceEnumUtil.UNMAPPED);
-        }
-
-        if(count != 0) {
-            return dynamicEnumJS;
-        } else {
-            return null;
-        }
+        return dynamicEnumsUpdated;
     }
 
     /**
@@ -424,7 +428,9 @@ public class ASpaceMapper {
         }
 
         // add the source for the name
-        namesJS.put("source", enumUtil.getASpaceNameSource(record.getInt("CreatorSourceID")));
+        if (record.has("SubjectSourceID")) {
+            namesJS.put("source", enumUtil.getASpaceNameSourceForSubject(record.getInt("SubjectSourceID")));
+        } else namesJS.put("source", enumUtil.getASpaceNameSource(record.getInt("CreatorSourceID")));
 
         // add basic information to the names record
         String sortName = record.getString("Name");

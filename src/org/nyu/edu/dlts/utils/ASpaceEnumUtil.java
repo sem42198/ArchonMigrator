@@ -199,6 +199,11 @@ public class ASpaceEnumUtil {
         return getEnumValueForID(key, "local");
     }
 
+    public String getASpaceNameSourceForSubject(int arID) {
+        String key = "name_subject_source_" + arID;
+        return getEnumValueForID(key, "local");
+    }
+
     /**
      * Method to initASpaceialize the name rules array
      */
@@ -1235,8 +1240,9 @@ public class ASpaceEnumUtil {
      * @param listName
      * @return
      */
-    public JSONObject getDynamicEnum(String listName) throws Exception {
+    public ArrayList<JSONObject> getDynamicEnum(String listName) throws Exception {
         JSONObject dynamicEnum = null;
+        JSONObject dynamicEnum2 = null;
 
         if (listName.contains("countries")) {
             dynamicEnum = dynamicEnums.get("country_iso_3166");
@@ -1275,9 +1281,16 @@ public class ASpaceEnumUtil {
             dynamicEnum = dynamicEnums.get("subject_source");
             dynamicEnum.put("valueKey", "EADSource");
             dynamicEnum.put("idPrefix", "subject_source");
+            dynamicEnum2 = dynamicEnums.get("name_source");
+            dynamicEnum2.put("valueKey", "EADSource");
+            dynamicEnum2.put("idPrefix", "name_subject_source");
         }
 
-        return dynamicEnum;
+        ArrayList<JSONObject> dynamicEnums = new ArrayList<JSONObject>();
+        dynamicEnums.add(dynamicEnum);
+        dynamicEnums.add(dynamicEnum2);
+
+        return dynamicEnums;
     }
 
     /**
