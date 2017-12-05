@@ -969,7 +969,7 @@ public class ASpaceMapper {
         idParts[0] = fullId.pop();
         if (!fullId.isEmpty()) idParts[1] = fullId.pop();
         if (!fullId.isEmpty()) idParts[2] = fullId.pop();
-        while (fullId.size() > 1) idParts[2] += " " + fullId.pop();
+        while (fullId.size() > 1) idParts[2] += "-" + fullId.pop();
         if (!fullId.isEmpty()) idParts[3] = fullId.pop();
 
         // make sure the id is unique

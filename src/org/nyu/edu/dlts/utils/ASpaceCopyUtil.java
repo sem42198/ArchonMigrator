@@ -1580,6 +1580,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 // stores any component IDs that are referenced as parents but not actually in the database
                 HashSet<String> notFoundIDs = new HashSet<String>();
 
+                // stores components with invalid (looping) parent relationships
+                HashSet<String> invalidParentIDs = new HashSet<String>();
+
                 // maps saved top container type/indicator combos with its uri in ASpace
                 HashMap<String, String> topContainerURIs = new HashMap<String, String>();
 
@@ -1622,8 +1625,9 @@ public class ASpaceCopyUtil implements  PrintConsole {
                             while (!nextComponentID.equals("0")) {
 
                                 // avoid getting stuck in an infinite loop if references circle back around
-                                if (nextComponentID.equals(cid)) break;
-                                if (++loopCount > 12) {
+                                if (nextComponentID.equals(cid) || ++loopCount > 12) {
+                                    componentJS.put("publish", false);
+                                    invalidParentIDs.add(cid);
                                     break;
                                 }
 
@@ -1821,7 +1825,17 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 for (String cid : intellectualComponents.keySet()) {
                     JSONObject componentJS = intellectualComponents.get(cid);
                     addComponentPosition(componentJS, cid, intellectualComponentParents, sortKeysByParent);
-                    addComponentToBatch(cid, batchJA, intellectualComponentParents, intellectualComponents, added);
+                    addComponentToBatch(cid, batchJA, intellectualComponentParents, intellectualComponents, added, invalidParentIDs);
+                }
+
+                // add a warning for components with invalid parent relationships
+                if (invalidParentIDs.size() != 0) {
+                    StringBuilder errorMessage = new StringBuilder();
+                    errorMessage.append("Invalid parent relationships found for ").append(invalidParentIDs.size())
+                            .append(" component(s) for resource: ").append(arId).append("\nInvalid relationships found for components:");
+                    for (String id : invalidParentIDs) errorMessage.append(" ").append(id);
+                    errorMessage.append("\nThese components will have root resource record as parent and be unpublished.\n");
+                    addErrorMessage(errorMessage.toString());
                 }
 
                 // free some memory now
@@ -1902,7 +1916,8 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @param added
      */
     private void addComponentToBatch(String cid, JSONArray batchJA, HashMap<String, String> intellectualComponentParents,
-                                     HashMap<String, JSONObject> intellectualComponents, HashSet<String> added) {
+                                     HashMap<String, JSONObject> intellectualComponents, HashSet<String> added,
+                                     HashSet<String> invalidParents) throws JSONException {
 
         // make sure we don't add a duplicate
         if (!added.contains(cid)) {
@@ -1910,12 +1925,15 @@ public class ASpaceCopyUtil implements  PrintConsole {
             String nextID = cid;
             int loopCount = 0;
 
-            // check that the parent relationship is valid
+            // final check that the parent relationship is valid and doesn't loop
             while (!nextID.equals("0")) {
                 nextID = intellectualComponentParents.get(nextID);
                 if (added.contains(nextID)) break;
                 if (++loopCount > 12 || nextID == null) {
-                    intellectualComponents.get(cid).remove("parent");
+                    JSONObject component = intellectualComponents.get(cid);
+                    component.remove("parent");
+                    component.put("publish", false);
+                    invalidParents.add(cid);
                     intellectualComponentParents.put(cid, "0");
                     break;
                 }
@@ -1924,7 +1942,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
             // unless it's a top level component make sure it's parent has been added to the batch array first
             if (!intellectualComponentParents.get(cid).equals("0")) {
                 addComponentToBatch(intellectualComponentParents.get(cid), batchJA, intellectualComponentParents,
-                        intellectualComponents, added);
+                        intellectualComponents, added, invalidParents);
             }
 
             // add the component to the batch array and the set of IDs that have already been added
@@ -1997,12 +2015,18 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         String containerType;
         String containerIndicator;
+        String cid;
 
         containerType = enumUtil.getASpaceInstanceContainerType(topLevel.getString("ContainerTypeID"));
         containerIndicator = topLevel.getString("ContainerIndicator");
+        cid = topLevel.getString("ID");
+
+        // we're not going to scope it by content ID if it is physical only
+        // these indicators are typically not repeated unless they are actually the same container
+        if (topLevel.getInt("ContentType") == 2) cid = null;
 
         // add top container or get a reference to it if it already exists
-        String containerURI = addTopContainer(containerType, containerIndicator, topContainerURIs, repoURI, null);
+        String containerURI = addTopContainer(containerType, containerIndicator, topContainerURIs, repoURI, null, cid);
         JSONObject topRef = mapper.getReferenceObject(containerURI);
 
         // create a json object for the instance
@@ -2060,17 +2084,19 @@ public class ASpaceCopyUtil implements  PrintConsole {
      * @throws Exception
      */
     private String addTopContainer(String containerType, String containerIndicator, HashMap<String, String> topContainerURIs,
-                                   String repoURI, JSONObject location) throws Exception {
+                                   String repoURI, JSONObject location, String cid) throws Exception {
         String uri;
 
-        // the key that is used to map to uri
+        // the key that is used to map to uri if there is no component ID
         String containerKey = (containerType + " " + containerIndicator).toLowerCase();
+
+        if (cid == null) cid = containerKey;
 
         JSONObject json;
 
-        if (topContainerURIs.containsKey(containerKey)) {
+        if (topContainerURIs.containsKey(cid)) {
             // the container already exists so we don't need to do anything else
-            uri =  topContainerURIs.get(containerKey);
+            uri =  topContainerURIs.get(cid);
         } else {
             // create json top container record
             json = new JSONObject();
@@ -2081,11 +2107,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
             if (location != null) addLocationInfo(json, location);
 
             // save the top container record and get its uri
-            String id = saveRecord(repoURI + ASpaceClient.TOP_CONTAINER_ENDPOINT, json.toString(), null);
+            String id = saveRecord(repoURI + ASpaceClient.TOP_CONTAINER_ENDPOINT, json.toString(), "Collection content->" + cid);
             if (!id.equalsIgnoreCase(NO_ID)) {
                 uri = repoURI + ASpaceClient.TOP_CONTAINER_ENDPOINT + "/" + id;
                 print("Copied Top Container: " + containerKey);
                 topContainerURIs.put(containerKey, uri);
+                topContainerURIs.put(cid, uri);
             } else {
                 print("Fail -- Top Container: " + containerKey);
                 return null;
@@ -2539,7 +2566,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
         JSONObject containerJS = new JSONObject();
 
         String containerURI = addTopContainer(containerType, containerIndicator, topURIs, repoURI,
-                location);
+                location, null);
         JSONObject containerRef = mapper.getReferenceObject(containerURI);
 
         containerJS.put("top_container", containerRef);
