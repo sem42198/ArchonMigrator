@@ -1229,13 +1229,6 @@ public class ASpaceMapper {
             json.put("component_id", record.getString("UniqueID"));
         }
 
-        //json.put("position", record.getInt("SortOrder"));
-
-        // place a dummy key to help with the sorting if we redoing the sorting
-//        String paddedSortOrder = String.format("%05d", record.getInt("SortOrder"));
-//        json.put("sort_key1", paddedSortOrder + "_" + record.get("ID"));
-//        json.put("sort_key2", ""); // sort order of the parent physical only content record
-
         // add the notes
         addResourceComponentNotes(record, json);
 

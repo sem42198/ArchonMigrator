@@ -1281,6 +1281,7 @@ public class ASpaceEnumUtil {
             dynamicEnum = dynamicEnums.get("subject_source");
             dynamicEnum.put("valueKey", "EADSource");
             dynamicEnum.put("idPrefix", "subject_source");
+            // since some subjects get mapped to agents we need the Archon's subject sources for agents as well as subjects
             dynamicEnum2 = dynamicEnums.get("name_source");
             dynamicEnum2.put("valueKey", "EADSource");
             dynamicEnum2.put("idPrefix", "name_subject_source");

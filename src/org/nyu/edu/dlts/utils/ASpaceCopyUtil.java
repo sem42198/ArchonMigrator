@@ -312,6 +312,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
                     if (!id.equalsIgnoreCase(NO_ID)) {
                         print("Copied Enum List Values: " + enumEndpoint + " :: " + id);
+
+                        // since this list needs to be updated twice need to store updates to avoid conflict
+                        if (updatedEnumJS.getString("name").equals("name_source")) {
+                            dynamicEnums = aspaceClient.loadDynamicEnums();
+                            mapper.setASpaceDynamicEnums(dynamicEnums);
+                        }
                     }
                 }
             }
@@ -717,11 +723,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
         updateRecordTotals("Names", total, success);
 
+        // now add the relationships between creators
         print("Adding related creator relationships ...");
         for (String key : invertedKeys) {
             JSONObject creator = records.getJSONObject(key);
             // add any relationships if needed
-            if(creator.has("CreatorRelationships") && creator.get("CreatorRelationships")!= null) {
+            if(creator.has("CreatorRelationships") && !creator.getString("CreatorRelationships").equals("null")) {
                 try {
                     String arId = creator.getString("ID");
                     String uri = nameURIMap.get(arId);
@@ -775,6 +782,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 if (!description.equals("null")) agentRelationJS.put("description", relationship.getString("Description"));
             }
 
+            // find the appropriate ASpace relationship type based on agent types and Archon relationship type
             switch (creatorRelationshipTypeID) {
                 case 4:
                     // agent_relationship_earlierlater :: is_earlier_form_of
@@ -1575,8 +1583,12 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 // maps saved top container type/indicator combos with its uri in ASpace
                 HashMap<String, String> topContainerURIs = new HashMap<String, String>();
 
-                // maps a physical component ID with that component's parent's ID
-                HashMap<String, String> physicalComponentsToParentIDs = new HashMap<String, String>();
+                // maps a physical component to any intellectual components it will need an instance for
+                // this is for intellectual only components that are immediate children of a physical only component
+                HashMap<String, ArrayList<String>> physicalComponentInstanceOfIDs = new HashMap<String, ArrayList<String>>();
+
+                // maps a physical component ID with that component's intellectual parent ID
+                HashMap<String, String> physicalComponentParents = new HashMap<String, String>();
 
                 // map a physical component ID with that components hierarchy of physical components (for containers)
                 HashMap<String, Stack<JSONObject>> physicalComponentsData = new HashMap<String, Stack<JSONObject>>();
@@ -1631,6 +1643,17 @@ public class ASpaceCopyUtil implements  PrintConsole {
                                     parentId = nextComponent.getInt("ID");
                                     break;
                                 } else {
+
+                                    // if the immediate parent of a intellectual only component is physical only
+                                    // then we will need to create an instance of the child to link them
+                                    if (loopCount == 1 && contentType == 1) {
+                                        if (!physicalComponentInstanceOfIDs.containsKey(nextComponentID)) {
+                                            physicalComponentInstanceOfIDs.put(nextComponentID, new ArrayList<String>());
+                                        }
+                                        physicalComponentInstanceOfIDs.get(nextComponentID).add(cid);
+                                    }
+
+                                    // add the sort order for parent physical only components to the sort key
                                     char nextSortKey = (char) nextComponent.getInt("SortOrder");
                                     sortKey = nextSortKey + sortKey;
                                 }
@@ -1726,22 +1749,37 @@ public class ASpaceCopyUtil implements  PrintConsole {
                         if (componentChain.size() == 0) componentChain.push(component);
 
                         // save the hierarchy/parent data we just found so we can add an instance later
-                        physicalComponentsToParentIDs.put(cid, intellectualParentID);
+                        physicalComponentParents.put(cid, intellectualParentID);
                         physicalComponentsData.put(cid, componentChain);
                     }
                 }
 
                 // now add instances for the physical components
-                for (String id: physicalComponentsToParentIDs.keySet()) {
+                for (String id: physicalComponentParents.keySet()) {
 
                     // get the parent's ASpace JSON record
-                    String parentId = physicalComponentsToParentIDs.get(id);
+                    String parentId = physicalComponentParents.get(id);
                     JSONObject parentJSON = intellectualComponents.get(parentId);
                     if (parentJSON == null) parentJSON = resourceJS;
 
-                    // add an instance for this physical component to the parent's JSON record
+                    // get the component's physical hierarchy
                     Stack<JSONObject> componentChain = physicalComponentsData.get(id);
-                    addInstance(parentJSON, componentChain, topContainerURIs, repoURI);
+
+                    // add an instance for this physical component to each record in list
+                    ArrayList<JSONObject> instanceList = new ArrayList<JSONObject>();
+
+                    if (physicalComponentInstanceOfIDs.containsKey(id)) {
+                        for (String recordID : physicalComponentInstanceOfIDs.get(id)) {
+                            JSONObject recordJSON = intellectualComponents.get(recordID);
+                            if (recordJSON != null) instanceList.add(recordJSON);
+                        }
+                    }
+
+                    // if there are no components in list link the container to an instance of its intellectual parent
+                    if (instanceList.size() == 0) instanceList.add(parentJSON);
+
+                    // add an instance to every component in list
+                    addInstance(instanceList, componentChain, topContainerURIs, repoURI);
 
                     // add any digital objects linked to the physical component in archon
                     // they linked to the component's parent in ASpace since digital object can't be linked to container
@@ -1827,13 +1865,27 @@ public class ASpaceCopyUtil implements  PrintConsole {
         updateRecordTotals("Collections", total, copyCount);
     }
 
+    /**
+     * calculates the position of a given component
+     * this has to be redone since the containers are no longer included in the sorting
+     * @param componentJS
+     * @param cID
+     * @param intellectualComponentParents
+     * @param sortKeysByParent
+     * @throws JSONException
+     */
     private void addComponentPosition(JSONObject componentJS, String cID,
                                       HashMap<String, String> intellectualComponentParents,
                                       HashMap<String, TreeSet<String>> sortKeysByParent) throws JSONException {
+        // get the parent since sorting is scoped by parent
         String parentID = "0";
         if (intellectualComponentParents.containsKey(cID)) parentID = intellectualComponentParents.get(cID);
+
+        // the sort keys are strings that have the correct sort order
         String sortKey = componentJS.getString("sort_key");
         TreeSet<String> parentKeys = sortKeysByParent.get(parentID);
+
+        // to get an integer sort key get the position of the sort key string in the sorted set
         if (parentKeys != null) {
             int position = parentKeys.headSet(sortKey, true).size();
             componentJS.put("position", position * 1000);
@@ -1931,13 +1983,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
     /**
      * method to add an instance to a resource/component
-     * @param recordJS
+     * @param instanceList
      * @param componentChain
      * @param topContainerURIs
      * @param repoURI
      * @throws Exception
      */
-    private void addInstance(JSONObject recordJS, Stack<JSONObject> componentChain, HashMap<String, String> topContainerURIs,
+    private void addInstance(ArrayList<JSONObject> instanceList, Stack<JSONObject> componentChain, HashMap<String, String> topContainerURIs,
                              String repoURI) throws Exception {
 
         // the first item in the component chain becomes the top container
@@ -1981,18 +2033,20 @@ public class ASpaceCopyUtil implements  PrintConsole {
         // add sub container to instance
         json.put("sub_container", containerJS);
 
-        // get the instance list from the record or if there is none create an empty one
-        JSONArray instanceJA;
-        try {
-            instanceJA = recordJS.getJSONArray("instances");
-        } catch (JSONException e) {
-            instanceJA = new JSONArray();
+        // add the instance to each component in our set
+        for (JSONObject recordJS : instanceList) {
+            // get the instance list from the record or if there is none create an empty one
+            JSONArray instanceJA;
+            try {
+                instanceJA = recordJS.getJSONArray("instances");
+            } catch (JSONException e) {
+                instanceJA = new JSONArray();
+            }
+
+            instanceJA.put(json);
+
+            recordJS.put("instances", instanceJA);
         }
-
-        instanceJA.put(json);
-
-        recordJS.put("instances", instanceJA);
-
     }
 
     /**
