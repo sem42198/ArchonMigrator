@@ -1596,8 +1596,14 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 // map a physical component ID with that components hierarchy of physical components (for containers)
                 HashMap<String, Stack<JSONObject>> physicalComponentsData = new HashMap<String, Stack<JSONObject>>();
 
-                // stores string keys
+                // stores string sort keys
                 HashMap<String, TreeSet<String>> sortKeysByParent = new HashMap<String, TreeSet<String>>();
+
+                // maps an intellectual component to a boolean that tells if it has exactly 1 child
+                HashMap<String, Boolean> hasOneChild = new HashMap<String, Boolean>();
+
+                // store physical content IDs we may not need to add an instance for since they have child physical content
+                HashSet<String> skipParentInstanceFor = new HashSet<String>();
 
                 Iterator<String> ckeys = resourceComponents.sortedKeys();
                 while (ckeys.hasNext()) {
@@ -1645,12 +1651,22 @@ public class ASpaceCopyUtil implements  PrintConsole {
                                 // if the component is not physical only it can be the parent and we're done
                                 if (nextComponent.getInt("ContentType") != 2) {
                                     parentId = nextComponent.getInt("ID");
+
+                                    if (loopCount == 1) {
+                                        // update whether the parent has exactly one child
+                                        if (!hasOneChild.containsKey(parentId + "")) {
+                                            hasOneChild.put(parentId + "", true);
+                                        } else {
+                                            hasOneChild.put(parentId + "", false);
+                                        }
+                                    }
+
                                     break;
                                 } else {
 
                                     // if the immediate parent of a intellectual only component is physical only
                                     // then we will need to create an instance of the child to link them
-                                    if (loopCount == 1 && contentType == 1) {
+                                    if (loopCount == 1 && (contentType == 1 || nextComponent.getString("OtherLevel").equals("undefined"))) {
                                         if (!physicalComponentInstanceOfIDs.containsKey(nextComponentID)) {
                                             physicalComponentInstanceOfIDs.put(nextComponentID, new ArrayList<String>());
                                         }
@@ -1709,7 +1725,7 @@ public class ASpaceCopyUtil implements  PrintConsole {
                     }
 
                     // prepare to add an instance (and container data) if it is a physical component
-                    if (contentType != 1){
+                    if (contentType != 1 && !component.getString("OtherLevel").equals("undefined")){
 
                         String intellectualParentID = null;
 
@@ -1735,10 +1751,14 @@ public class ASpaceCopyUtil implements  PrintConsole {
                             }
 
                             // if it is a physical component add it to the stack
-                            if (nextComponent.getInt("ContentType") != 1) {
+                            if (nextComponent.getInt("ContentType") != 1 &&
+                                    !nextComponent.getString("OtherLevel").equals("undefined")) {
 
                                 // usually earliest way to tell if we are stuck in infinate loop
-                                if (!componentChain.contains(nextComponent)) componentChain.push(nextComponent);
+                                if (!componentChain.contains(nextComponent)) {
+                                    componentChain.push(nextComponent);
+                                    if (loopCount > 1) skipParentInstanceFor.add(nextComponentID);
+                                }
                                 else break;
                             }
 
@@ -1755,6 +1775,15 @@ public class ASpaceCopyUtil implements  PrintConsole {
                         // save the hierarchy/parent data we just found so we can add an instance later
                         physicalComponentParents.put(cid, intellectualParentID);
                         physicalComponentsData.put(cid, componentChain);
+
+                        // update whether the parent has exactly one child
+                        if (componentChain.size() == 1) {
+                            if (!hasOneChild.containsKey(intellectualParentID)) {
+                                hasOneChild.put(intellectualParentID, true);
+                            } else {
+                                hasOneChild.put(intellectualParentID, false);
+                            }
+                        }
                     }
                 }
 
@@ -1780,10 +1809,19 @@ public class ASpaceCopyUtil implements  PrintConsole {
                     }
 
                     // if there are no components in list link the container to an instance of its intellectual parent
-                    if (instanceList.size() == 0) instanceList.add(parentJSON);
+                    // also if the container is the only child of the parent and top level
+                    if (id.equals(parentId)) {
+                        instanceList.add(parentJSON);
+                    } else {
+                        if (componentChain.size() == 1 && hasOneChild.containsKey(parentId) && hasOneChild.get(parentId)) {
+                            instanceList.add(parentJSON);
+                        } else if (instanceList.isEmpty() && !skipParentInstanceFor.contains(id)) {
+                            instanceList.add(parentJSON);
+                        }
+                    }
 
                     // add an instance to every component in list
-                    addInstance(instanceList, componentChain, topContainerURIs, repoURI);
+                    if (!instanceList.isEmpty()) addInstance(instanceList, componentChain, topContainerURIs, repoURI);
 
                     // add any digital objects linked to the physical component in archon
                     // they linked to the component's parent in ASpace since digital object can't be linked to container
@@ -1813,8 +1851,11 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 if (notFoundIDs.size() != 0) {
                     StringBuilder errorMessage = new StringBuilder();
                     errorMessage.append("Could not find ").append(notFoundIDs.size())
-                            .append(" component(s) for resource: ").append(arId).append("\nNot found components:");
-                    for (String id : notFoundIDs) errorMessage.append(" ").append(id);
+                            .append(" component(s) for resource: ").append(arId);
+                    if (notFoundIDs.size() <= 20) {
+                        errorMessage.append("\nNot found components:");
+                        for (String id : notFoundIDs) errorMessage.append(" ").append(id);
+                    }
                     errorMessage.append("\nReferencing child components/digital objects will have root resource record as parent.");
                     errorMessage.append("\nReferencing child components will be unpublished.\n");
                     addErrorMessage(errorMessage.toString());
@@ -1832,9 +1873,13 @@ public class ASpaceCopyUtil implements  PrintConsole {
                 if (invalidParentIDs.size() != 0) {
                     StringBuilder errorMessage = new StringBuilder();
                     errorMessage.append("Invalid parent relationships found for ").append(invalidParentIDs.size())
-                            .append(" component(s) for resource: ").append(arId).append("\nInvalid relationships found for components:");
-                    for (String id : invalidParentIDs) errorMessage.append(" ").append(id);
-                    errorMessage.append("\nThese components will have root resource record as parent and be unpublished.\n");
+                            .append(" component(s) for resource: ").append(arId);
+                    if (invalidParentIDs.size() <= 20) {
+                        errorMessage.append("\nInvalid relationships found for components:");
+                        for (String id : invalidParentIDs) errorMessage.append(" ").append(id);
+                    }
+                    errorMessage.append("\nThese components will have root resource record as parent and be unpublished.");
+                    errorMessage.append("\nCleanup will be required for this resource.\n");
                     addErrorMessage(errorMessage.toString());
                 }
 
@@ -2466,7 +2511,28 @@ public class ASpaceCopyUtil implements  PrintConsole {
 
             JSONObject location = locations.getJSONObject(i);
 
-            String[] info = getTypeAndIndicator(location.getString("Content"));
+            String content = location.getString("Content");
+
+            // if it says 'all' in the content field, add the location to all existing containers
+            if (content.trim().equalsIgnoreCase("all") && !topContainerURIs.isEmpty()) {
+                for (String topContainerURI : topContainerURIs.values()) {
+                    try {
+                        JSONObject containerJS = new JSONObject(aspaceClient.get(topContainerURI, null));
+                        addLocationInfo(containerJS, location);
+                        String id = saveRecord(topContainerURI, containerJS.toString(), null);
+                        if (!id.equalsIgnoreCase(NO_ID)) {
+                            print("Added Location to Top Container: all");
+                        } else {
+                            print("Fail -- Add location to Top Container: all");
+                        }
+                    } catch (NullPointerException e) {
+                        print("Fail -- Add location to Top Container: all\nCould not load " + topContainerURI);
+                    }
+                }
+                continue;
+            }
+
+            String[] info = getTypeAndIndicator(content);
 
             String containerType = info[0];
 
