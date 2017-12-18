@@ -54,9 +54,6 @@ public class ASpaceMapper {
 
     // date formatter used to convert date string to date object
     SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyyMMdd");
-    SimpleDateFormat simpleDateFormat2 = new SimpleDateFormat("yyyyddMM");
-    SimpleDateFormat humanDateFormat = new SimpleDateFormat("MM/dd/yyyy");
-
 
     // booleans used to convert some bbcode to html or blanks
     private boolean bbcodeToHTML = false;
@@ -1448,7 +1445,7 @@ public class ASpaceMapper {
      * @throws Exception
      */
     private void addMultipartNote(JSONArray notesJA, String noteType, String noteLabel, String noteContent) throws Exception {
-        if(noteContent.isEmpty() || noteType.isEmpty()) return;
+        if(noteContent.trim().isEmpty() || noteType.isEmpty()) return;
 
         // these note types don't exist in ASpace
         if (noteType.equals("unitid") || noteType.equals("origination") || noteType.equals("note")) noteType = "odd";
@@ -1835,19 +1832,12 @@ public class ASpaceMapper {
      * @return
      */
     private String getHumanReadableDate(String dateString) {
-        Date date = null;
-
         try {
-            date = simpleDateFormat.parse(dateString);
-        } catch (ParseException e) { }
-
-        try {
-            date = simpleDateFormat2.parse(dateString);
-        } catch (ParseException e) { }
-
-        if(date != null) {
-            return humanDateFormat.format(date);
-        } else {
+            String year = dateString.substring(0, 4);
+            String month = dateString.substring(4, 6);
+            String day = dateString.substring(6);
+            return month + "/" + day + "/" + year;
+        } catch (Exception e) {
             return dateString;
         }
     }
