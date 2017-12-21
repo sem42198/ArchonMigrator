@@ -9,9 +9,10 @@ We recommend migrating to the latest version of ArchivesSpace when possible. Arc
 
 ## Running the Archon migration tool
 
-1. Unpack the zip file in a convenient location.
-2. From the command line, change into the ArchonMigrator directory and execute either "run.bat" (Windows), or "run.sh" (\*nix based systems). On Windows, it is also possible to double click on the "run.bat" file. This brings up the main application window.
-3. Enter the connection information for the Archon and ArchivesSpace instances
-4. To download the digital object files stored in the database along with copying the metadata, select "Download Digital Object Files" and set an appropriate download folder by using the "Set Download Folder" button.
-5. Select the "Set Default Repository" to set which Repository Accession and Unlinked digital Objects are copied to. The default is to copy Accession records to the same repository of any Collection records they are linked to, or the first repository if they are not. You can also select a specific repository from the drop down list.
+1. Read the guidelines for migrating Archon data and prepare your data as needed.
+2. Install ArchivesSpace and ensure that ArchivesSpace is running.
+3. Get the latest JAR file release.
+4. Double-click the JAR file to open up the migration tool interface.
+5. Change the default information in the migration tool user interface as needed.
 6. Press the "Copy To Archives Space" button to start the migration process.
+7. Assess the migration using the migration report and clean up data as needed.
